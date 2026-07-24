@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "sonner"
 import Navbar from "./components/navbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Analytics } from "@vercel/analytics/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,7 +37,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "es_MX",
-    url: "https://deduce.ivargasm.com",
+    url: "https://deduce.juristechespace.com",
     title: "Deduce | Tu aliado fiscal",
     description: "Controla tus facturas y maximiza tu devolución de impuestos.",
     siteName: "Deduce",
@@ -60,6 +61,7 @@ export default function RootLayout({
             {children}
           </main>
         </TooltipProvider>
+        <Analytics />
       </body>
     </html>
   );
