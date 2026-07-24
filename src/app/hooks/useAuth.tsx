@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '../store/Store';
-import { fetchUser } from '../lib/api'; // Función para obtener el usuario
+import { fetchUser } from '../lib/api/auth'; // Función para obtener el usuario
 
 export const useAuth = () => {
     const { user, setUser, logout, url } = useAuthStore();
