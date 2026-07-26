@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useAuthStore } from './Store';
 import { fetchProfileApi, updateProfileApi } from '../lib/api/profiles';
-import { fetchInvoicesApi, fetchSummaryApi, deleteInvoiceApi } from '../lib/api/invoices';
+import { fetchInvoicesApi, fetchSummaryApi, deleteInvoiceApi, updateInvoiceApi } from '../lib/api/invoices';
 
 export interface Invoice {
     id: number;
@@ -17,6 +17,22 @@ export interface Invoice {
     warning_messages: string[] | null;
     date: string;
     created_at: string;
+    student_curp?: string | null;
+    educational_level?: string | null;
+}
+
+export interface InvoiceUpdateData {
+    cfdi_use?: string;
+    student_curp?: string;
+    educational_level?: string;
+}
+
+export interface CategorySummary {
+    category: string;
+    amount: number;
+    limit: number | null;
+    percentage: number | null;
+    is_independent: boolean;
 }
 
 export interface InvoiceSummary {
@@ -25,8 +41,10 @@ export interface InvoiceSummary {
     monthly_invoices_count: number;
     monthly_invoices_limit: number;
     limit: number | null;
+    limit_reason?: string;
     percentage: number | null;
     by_category: Record<string, number>;
+    category_details: CategorySummary[];
     simulated_refund: number;
 }
 
@@ -46,13 +64,16 @@ interface DeductionsState {
     profile: UserProfile | null;
     isUploading: boolean;
     isLoading: boolean;
+    selectedYear: number;
 
+    setSelectedYear: (year: number) => void;
     setUploading: (status: boolean) => void;
     fetchProfile: () => Promise<void>;
     updateProfile: (data: Partial<UserProfile>) => Promise<void>;
     fetchInvoices: () => Promise<void>;
     fetchSummary: () => Promise<void>;
     deleteInvoice: (id: number) => Promise<void>;
+    updateInvoice: (id: number, data: InvoiceUpdateData) => Promise<void>;
 }
 
 export const useDeductionsStore = create<DeductionsState>((set, get) => ({
@@ -61,7 +82,14 @@ export const useDeductionsStore = create<DeductionsState>((set, get) => ({
     profile: null,
     isUploading: false,
     isLoading: false,
+    selectedYear: new Date().getFullYear(),
 
+    setSelectedYear: (year) => {
+        set({ selectedYear: year });
+        // Recargar datos cuando cambie el año
+        get().fetchSummary();
+        get().fetchInvoices();
+    },
     setUploading: (status) => set({ isUploading: status }),
 
     fetchProfile: async () => {
@@ -87,24 +115,25 @@ export const useDeductionsStore = create<DeductionsState>((set, get) => ({
 
     fetchInvoices: async () => {
         set({ isLoading: true });
-        const url = useAuthStore.getState().url;
         try {
-            const data = await fetchInvoicesApi(url);
+            const url = useAuthStore.getState().url;
+            const year = get().selectedYear;
+            const data = await fetchInvoicesApi(url, year);
             set({ invoices: data });
         } catch (error) {
-            console.error(error);
+            console.error('Error fetching invoices', error);
         } finally {
             set({ isLoading: false });
         }
     },
-
     fetchSummary: async () => {
-        const url = useAuthStore.getState().url;
         try {
-            const data = await fetchSummaryApi(url);
+            const url = useAuthStore.getState().url;
+            const year = get().selectedYear;
+            const data = await fetchSummaryApi(url, year);
             set({ summary: data });
         } catch (error) {
-            console.error(error);
+            console.error('Error fetching summary', error);
         }
     },
 
@@ -112,6 +141,18 @@ export const useDeductionsStore = create<DeductionsState>((set, get) => ({
         const url = useAuthStore.getState().url;
         try {
             await deleteInvoiceApi(url, id);
+            await get().fetchInvoices();
+            await get().fetchSummary();
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
+    },
+
+    updateInvoice: async (id: number, data: InvoiceUpdateData) => {
+        const url = useAuthStore.getState().url;
+        try {
+            await updateInvoiceApi(url, id, data);
             await get().fetchInvoices();
             await get().fetchSummary();
         } catch (error) {

@@ -11,20 +11,20 @@ export const uploadInvoiceApi = async (url: string, formData: FormData) => {
     return res.json();
 };
 
-export const fetchInvoicesApi = async (url: string) => {
-    const res = await fetch(`${url}/api/invoices/`, { credentials: 'include' });
+export const fetchInvoicesApi = async (url: string, year?: number) => {
+    const res = await fetch(`${url}/api/invoices/${year ? `?year=${year}` : ''}`, { credentials: 'include' });
     if (!res.ok) throw new Error('Error al obtener facturas');
     return res.json();
 };
 
-export const fetchSummaryApi = async (url: string) => {
-    const res = await fetch(`${url}/api/invoices/summary`, { credentials: 'include' });
+export const fetchSummaryApi = async (url: string, year?: number) => {
+    const res = await fetch(`${url}/api/invoices/summary${year ? `?year=${year}` : ''}`, { credentials: 'include' });
     if (!res.ok) throw new Error('Error al obtener resumen');
     return res.json();
 };
 
-export const exportInvoicesApi = async (url: string) => {
-    const res = await fetch(`${url}/api/invoices/export`, {
+export const exportInvoicesApi = async (url: string, year?: number) => {
+    const res = await fetch(`${url}/api/invoices/export${year ? `?year=${year}` : ''}`, {
         method: 'GET',
         credentials: 'include',
     });
@@ -45,5 +45,25 @@ export const deleteInvoiceApi = async (url: string, invoiceId: number) => {
         credentials: 'include',
     });
     if (!res.ok) throw new Error('Error al eliminar factura');
+    return res.json();
+};
+
+export const updateInvoiceApi = async (
+    url: string, 
+    invoiceId: number, 
+    data: { cfdi_use?: string; student_curp?: string; educational_level?: string }
+) => {
+    const res = await fetch(`${url}/api/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'Error al actualizar factura');
+    }
     return res.json();
 };

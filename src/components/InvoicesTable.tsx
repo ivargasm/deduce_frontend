@@ -19,15 +19,34 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { AlertCircle, CheckCircle2, AlertTriangle, Trash2, Search, Filter } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { AlertCircle, CheckCircle2, AlertTriangle, Trash2, Search, Filter, Edit2, Loader2 } from 'lucide-react';
 import { useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
 
 export default function InvoicesTable() {
-    const { invoices, fetchInvoices, isLoading, deleteInvoice } = useDeductionsStore();
+    const { invoices, fetchInvoices, isLoading, deleteInvoice, updateInvoice } = useDeductionsStore();
     const [invoiceToDelete, setInvoiceToDelete] = useState<number | null>(null);
+    const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
+    const [editCfdiUse, setEditCfdiUse] = useState('');
+    const [editCurp, setEditCurp] = useState('');
+    const [editNivel, setEditNivel] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('Todas');
+
+    const nivelesOptions = ["Preescolar", "Primaria", "Secundaria", "Profesional técnico", "Bachillerato o su equivalente"];
 
     const categories = useMemo(() => {
         const cats = new Set(invoices.map(inv => inv.expense_type).filter(Boolean) as string[]);
@@ -57,6 +76,35 @@ export default function InvoicesTable() {
             } finally {
                 setInvoiceToDelete(null);
             }
+        }
+    };
+
+    const handleOpenEdit = (inv: Invoice) => {
+        setInvoiceToEdit(inv);
+        setEditCfdiUse(inv.cfdi_use || '');
+        setEditCurp(inv.student_curp || '');
+        setEditNivel(inv.educational_level || '');
+    };
+
+    const handleSaveEdit = async () => {
+        if (!invoiceToEdit) return;
+        setIsSaving(true);
+        try {
+            await updateInvoice(invoiceToEdit.id, {
+                cfdi_use: editCfdiUse,
+                student_curp: editCurp,
+                educational_level: editNivel,
+            });
+            toast.success("Factura actualizada correctamente");
+            setInvoiceToEdit(null);
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                toast.error(error.message);
+            } else {
+                toast.error("Error al actualizar la factura");
+            }
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -150,6 +198,13 @@ export default function InvoicesTable() {
                             <TableCell>
                                 <div className="flex justify-center items-center gap-2">
                                     <button 
+                                        onClick={() => handleOpenEdit(inv)}
+                                        className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                                        title="Editar factura"
+                                    >
+                                        <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button 
                                         onClick={() => setInvoiceToDelete(inv.id)}
                                         className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
                                         title="Eliminar factura"
@@ -182,6 +237,61 @@ export default function InvoicesTable() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <Dialog open={invoiceToEdit !== null} onOpenChange={(open) => !open && setInvoiceToEdit(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Editar Factura</DialogTitle>
+                        <DialogDescription>
+                            Puedes actualizar el Uso de CFDI o asignar los datos del alumno si la factura no incluía el Complemento IEDU.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Uso CFDI</Label>
+                            <Input
+                                value={editCfdiUse}
+                                onChange={(e) => setEditCfdiUse(e.target.value)}
+                                placeholder="Ej. D10"
+                                className="focus:border-[var(--color-deduce-teal)]"
+                            />
+                        </div>
+                        {editCfdiUse === 'D10' && (
+                            <>
+                                <div className="space-y-2">
+                                    <Label>Nivel Educativo</Label>
+                                    <select
+                                        value={editNivel}
+                                        onChange={(e) => setEditNivel(e.target.value)}
+                                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-deduce-teal)] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <option value="">Seleccionar nivel...</option>
+                                        {nivelesOptions.map(nv => (
+                                            <option key={nv} value={nv}>{nv}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>CURP del Alumno</Label>
+                                    <Input
+                                        value={editCurp}
+                                        onChange={(e) => setEditCurp(e.target.value)}
+                                        placeholder="18 caracteres"
+                                        className="focus:border-[var(--color-deduce-teal)] uppercase"
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setInvoiceToEdit(null)}>Cancelar</Button>
+                        <Button onClick={handleSaveEdit} disabled={isSaving} className="bg-[var(--color-deduce-teal)] hover:bg-[#16b5a3] text-[var(--color-deduce-navy)] font-bold">
+                            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Guardar Cambios
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

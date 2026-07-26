@@ -10,8 +10,11 @@ import { useDeductionsStore } from "@/app/store/DeductionsStore";
 export default function Sidebar() {
     const pathname = usePathname();
     const { logout } = useAuthStore();
-    const { profile, summary } = useDeductionsStore();
+    const { profile, summary, selectedYear, setSelectedYear } = useDeductionsStore();
     const [mobileOpen, setMobileOpen] = useState(false);
+
+    const currentYear = new Date().getFullYear();
+    const years = [currentYear, currentYear - 1, currentYear - 2];
 
     const navItems = [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -52,7 +55,20 @@ export default function Sidebar() {
                 <Link href="/" className="block mb-2">
                     <h1 className="text-2xl font-bold font-display text-[var(--color-deduce-navy)]">Deduce</h1>
                 </Link>
-                <div className="text-sm text-slate-500 font-medium mb-8">Tax Year {new Date().getFullYear()}</div>
+                <div className="mb-8 relative group">
+                    <select 
+                        value={selectedYear}
+                        onChange={(e) => setSelectedYear(Number(e.target.value))}
+                        className="appearance-none bg-slate-100 hover:bg-slate-200 border-none text-xs text-[var(--color-deduce-navy)] font-bold py-1.5 pl-3 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--color-deduce-teal)]/50 cursor-pointer transition-colors"
+                    >
+                        {years.map(y => (
+                            <option key={y} value={y}>Tax Year {y}</option>
+                        ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-slate-500">
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                </div>
 
                 <nav className="space-y-2 mb-8">
                     {navItems.map((item) => {

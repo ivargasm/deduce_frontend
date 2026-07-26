@@ -7,7 +7,8 @@ import { useDeductionsStore } from '@/app/store/DeductionsStore';
 import UploadZone from '@/components/UploadZone';
 import InvoicesTable from '@/components/InvoicesTable';
 import { Card } from "@/components/ui/card";
-import { Info, UploadCloud, Building2, Stethoscope, GraduationCap, HeartHandshake, ShieldPlus, AlertTriangle, User, Download, Loader2, Bus, PiggyBank, Archive, Accessibility, Wallet } from 'lucide-react';
+import { Info, UploadCloud, Building2, Stethoscope, GraduationCap, HeartHandshake, ShieldPlus, User, Download, Loader2, Bus, PiggyBank, Archive, Accessibility, Wallet, AlertTriangle } from 'lucide-react';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/app/store/Store';
 import { exportInvoicesApi } from '@/app/lib/api/invoices';
 import {
@@ -24,7 +25,7 @@ import { toast } from 'sonner';
 
 export default function DashboardPage() {
     const router = useRouter();
-    const { profile, summary, fetchProfile, fetchSummary, updateProfile } = useDeductionsStore();
+    const { summary, profile, fetchSummary, selectedYear, fetchProfile, updateProfile } = useDeductionsStore();
     const { user, url } = useAuthStore();
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [income, setIncome] = useState<string>('');
@@ -57,7 +58,7 @@ export default function DashboardPage() {
 
         setIsExporting(true);
         try {
-            const blob = await exportInvoicesApi(url);
+            const blob = await exportInvoicesApi(url, selectedYear);
             const downloadUrl = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = downloadUrl;
@@ -148,15 +149,23 @@ export default function DashboardPage() {
                     )}
                     {/* Top Grid: Limit and Upload */}
                     <section className="grid lg:grid-cols-[1.5fr_1fr] gap-6 mb-8 items-start">
-                        {/* Límite de Deducciones Card */}
                         <Card className="p-8 border border-slate-200 shadow-sm rounded-xl bg-white flex flex-col gap-6">
                             <div className="flex justify-between items-start">
-                                <div>
-                                    <h2 className="text-xl font-bold text-[var(--color-deduce-navy)] flex items-center gap-2">
-                                        Límite de Deducciones
-                                        <Info className="w-4 h-4 text-slate-400" />
-                                    </h2>
-                                    <p className="text-sm text-slate-500 mt-1">Tope de Ley (Art. 151 LISR)</p>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-sm font-semibold text-slate-700">Deducciones Personales</h2>
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger>
+                                                    <Info className="w-4 h-4 text-slate-400" />
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p className="w-64 text-xs">Tope de Ley (Art. 151 LISR). No incluye colegiaturas, ya que estas se rigen por un decreto independiente.</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
+                                    <p className="text-xs text-slate-500">Tope Global ({summary?.limit_reason || "Art. 151 LISR"})</p>
                                 </div>
                                 <div className="text-right">
                                     <div className="text-4xl font-bold text-[var(--color-deduce-teal)] tabular-nums font-display">
@@ -183,29 +192,22 @@ export default function DashboardPage() {
                                         style={{ width: `${Math.min(summary?.percentage || 0, 100)}%` }}
                                     ></div>
                                 </div>
-                                <div className="flex justify-between text-[10px] text-slate-400 mt-2 font-semibold uppercase tracking-wider">
-                                    <span>Seguro (0%)</span>
-                                    <span>En Progreso</span>
-                                    <span>Límite (100%)</span>
-                                </div>
+                                
                                 {summary && summary.total_recoverable > 0 && (
-                                    <div className="mt-4 p-3 bg-[var(--color-deduce-amber)]/10 border border-[var(--color-deduce-amber)]/20 rounded-lg flex items-start gap-2 text-[var(--color-deduce-navy)] text-sm">
+                                    <div className="mt-6 p-4 bg-[var(--color-deduce-amber)]/10 border border-[var(--color-deduce-amber)]/20 rounded-xl flex items-start gap-3 text-[var(--color-deduce-navy)] text-sm">
                                         <AlertTriangle className="w-5 h-5 text-[var(--color-deduce-amber)] flex-shrink-0 mt-0.5" />
                                         <div>
                                             <p className="font-semibold text-[var(--color-deduce-amber)]">Tienes {formatCurrency(summary.total_recoverable)} en deducciones bloqueadas.</p>
-                                            <p className="text-xs mt-0.5 opacity-80">Tienen errores operativos (ej. Uso CFDI incorrecto) y no aparecerán en el SAT automáticamente. Reclasifícalas en tu anual.</p>
+                                            <p className="text-xs mt-1 text-slate-600 leading-relaxed">Estas facturas tienen errores operativos (ej. Uso CFDI incorrecto o método de pago inválido) y no aparecerán en el SAT automáticamente. Tendrás que reclasificarlas en tu anual.</p>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </Card>
 
-                        {/* Upload XML Card (Navy Style) */}
                         <UploadZone compact={true}>
                             <Card className="p-8 border border-slate-700 shadow-lg rounded-xl bg-[var(--color-deduce-navy)] text-white relative overflow-hidden flex flex-col justify-center items-center text-center h-full hover:border-slate-500 transition-colors">
-                                {/* Decorative blur */}
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-deduce-teal)]/20 blur-3xl rounded-full"></div>
-
                                 <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-4 relative z-10 border border-slate-700">
                                     <UploadCloud className="w-8 h-8 text-[var(--color-deduce-teal)]" />
                                 </div>
@@ -213,60 +215,99 @@ export default function DashboardPage() {
                                 <p className="text-slate-400 text-sm mb-6 max-w-xs relative z-10">
                                     Haz clic o arrastra tus facturas aquí para analizarlas automáticamente.
                                 </p>
-
-                                <div className="w-full relative z-10 flex flex-col gap-3">
-                                    <div className="flex gap-2 justify-center mt-2">
-                                        <span className="text-[10px] font-semibold tracking-wider uppercase px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">Auto-Detect</span>
-                                        <span className="text-[10px] font-semibold tracking-wider uppercase px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">SAT Sync</span>
-                                    </div>
-                                </div>
                             </Card>
                         </UploadZone>
-
                     </section>
 
-                    <div className="mb-8">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-lg font-bold text-[var(--color-deduce-navy)] font-display">Desglose por Categorías</h2>
-                        </div>
-                        {/* Desglose por Categorías - Horizontal Scroll */}
-                        <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                            {[...categoryConfigs]
-                                .sort((a, b) => {
-                                    const amountA = summary?.by_category?.[a.id] || 0;
-                                    const amountB = summary?.by_category?.[b.id] || 0;
-                                    return amountB - amountA;
-                                })
-                                .map(cat => {
-                                const amount = summary?.by_category?.[cat.id] || 0;
-                                const maxAmount = summary?.limit || 1;
-                                const percent = Math.min((amount / maxAmount) * 100, 100);
-                                const Icon = cat.icon;
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8 items-start">
+                        <div className="space-y-4 overflow-hidden">
+                            <h2 className="text-lg font-bold text-[var(--color-deduce-navy)] font-display">Desglose por Categorías (Tope Global)</h2>
+                            {summary?.category_details && summary.category_details.filter(c => !c.is_independent).length > 0 ? (
+                                <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                                    {summary.category_details.filter(c => !c.is_independent).map((catDetail, idx) => {
+                                        const ui = categoryConfigs.find(c => c.id === catDetail.category) || { id: "otro", label: "OTROS", icon: Info, color: "text-slate-700", bg: "bg-slate-100", border: "border-slate-300", bar: "bg-slate-300" };
+                                        const percent = catDetail.percentage ?? 0;
+                                        const isCloseToLimit = percent >= 85 && percent < 100;
+                                        const isOverLimit = percent >= 100;
+                                        const Icon = ui.icon;
 
-                                return (
-                                    <div key={cat.id} className="min-w-[240px] flex-shrink-0 snap-start bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div className={`p-2 rounded-lg ${cat.bg} ${cat.color}`}>
-                                                <Icon className="w-5 h-5" />
+                                        return (
+                                            <div key={idx} className={`min-w-[260px] flex-shrink-0 snap-start bg-white border ${isOverLimit ? 'border-red-300 bg-red-50/50' : (isCloseToLimit ? 'border-orange-300 bg-orange-50/50' : 'border-slate-200')} rounded-xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden`}>
+                                                <div className="flex justify-between items-start mb-4 relative z-10">
+                                                    <div className={`p-2 rounded-lg ${ui.bg} ${ui.color}`}>
+                                                        <Icon className="w-5 h-5" />
+                                                    </div>
+                                                    <div className={`text-xs font-bold px-2 py-1 rounded-md ${isOverLimit ? 'bg-red-200 text-red-800' : (isCloseToLimit ? 'bg-orange-200 text-orange-800' : `${ui.bg} ${ui.color}`)}`}>
+                                                        {percent.toFixed(0)}%
+                                                    </div>
+                                                </div>
+                                                <div className="relative z-10">
+                                                    <div className={`text-[10px] font-bold ${isOverLimit ? 'text-red-500' : (isCloseToLimit ? 'text-orange-500' : 'text-slate-400')} tracking-widest uppercase mb-1`}>
+                                                        {catDetail.category.substring(0, 30)}
+                                                    </div>
+                                                    <div className="text-xl font-bold text-[var(--color-deduce-navy)]">{formatCurrency(catDetail.amount)}</div>
+                                                </div>
+                                                <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative z-10">
+                                                    <div className={`h-full ${isOverLimit ? 'bg-red-500' : (isCloseToLimit ? 'bg-orange-500' : ui.bar)}`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
+                                                </div>
                                             </div>
-                                            <div className={`text-xs font-bold px-2 py-1 rounded-md ${cat.bg} ${cat.color}`}>
-                                                {percent.toFixed(0)}%
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-1">{cat.label}</div>
-                                            <div className="text-xl font-bold text-[var(--color-deduce-navy)]">{formatCurrency(amount)}</div>
-                                        </div>
-                                        <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                            <div className={`h-full ${cat.bar}`} style={{ width: `${percent}%` }}></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center bg-white rounded-xl border border-slate-200">
+                                    <p className="text-slate-500 text-sm">Aún no hay deducciones globales capturadas.</p>
+                                </div>
+                            )}
                         </div>
+
+                        {summary?.category_details && summary.category_details.filter(c => c.is_independent).length > 0 && (
+                            <div className="space-y-4 overflow-hidden">
+                                <h2 className="text-lg font-bold text-[var(--color-deduce-navy)] font-display">Topes Independientes (Colegiaturas)</h2>
+                                <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                                    {summary.category_details.filter(c => c.is_independent).map((cat) => {
+                                        const percent = cat.percentage ?? 0;
+                                        const isOverLimit = percent >= 100;
+                                        const isCloseToLimit = percent >= 85 && percent < 100;
+                                        const limitUi = {
+                                            safe: { bg: "bg-white", border: "border-slate-200", color: "text-[var(--color-deduce-navy)]", iconBg: "bg-[var(--color-deduce-peach)]/20" },
+                                            warning: { bg: "bg-orange-50/50", border: "border-orange-300", color: "text-orange-700", iconBg: "bg-orange-200" },
+                                            over: { bg: "bg-red-50/50", border: "border-red-300", color: "text-red-700", iconBg: "bg-red-200" }
+                                        };
+                                        const ui = isOverLimit ? limitUi.over : isCloseToLimit ? limitUi.warning : limitUi.safe;
+                                        const Icon = GraduationCap;
+                                        
+                                        return (
+                                            <div key={cat.category} className={`snap-start shrink-0 w-72 rounded-xl p-5 border shadow-sm transition-all relative overflow-hidden ${ui.bg} ${ui.border}`}>
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className={`p-2 rounded-lg ${ui.iconBg}`}>
+                                                        <Icon className={`w-5 h-5 ${ui.color}`} />
+                                                    </div>
+                                                    <div className={`px-2.5 py-1 rounded-full text-xs font-bold ${ui.iconBg} ${ui.color}`}>
+                                                        {percent.toFixed(0)}%
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1 relative z-10">
+                                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider truncate" title={cat.category}>
+                                                        {cat.category}
+                                                    </h3>
+                                                    <p className={`text-2xl font-black tabular-nums tracking-tight ${ui.color}`}>
+                                                        {formatCurrency(cat.amount)}
+                                                    </p>
+                                                    <div className="flex items-center gap-1.5 pt-1">
+                                                        <p className="text-xs text-slate-500 font-medium">
+                                                            {cat.limit ? `Tope: ${formatCurrency(cat.limit)}` : "Sin tope específico"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Bottom Section: Table */}
                     <div className="mb-12">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-[var(--color-deduce-navy)] font-display">CFDI Recientes</h2>
@@ -274,7 +315,6 @@ export default function DashboardPage() {
                         </div>
                         <InvoicesTable />
                     </div>
-
                 </div>
 
                 {/* Profile Modal */}
