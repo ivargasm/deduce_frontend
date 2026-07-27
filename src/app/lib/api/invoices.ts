@@ -67,3 +67,20 @@ export const updateInvoiceApi = async (
     }
     return res.json();
 };
+
+export const sendAccountantReportApi = async (url: string, email: string, year: number | null) => {
+    const res = await fetch(`${url}/api/invoices/send-report`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ email, year }),
+    });
+    
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'Error al enviar reporte al contador');
+    }
+    return res.json();
+};

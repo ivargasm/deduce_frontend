@@ -7,10 +7,10 @@ import { useDeductionsStore } from '@/app/store/DeductionsStore';
 import UploadZone from '@/components/UploadZone';
 import InvoicesTable from '@/components/InvoicesTable';
 import { Card } from "@/components/ui/card";
-import { Info, UploadCloud, Building2, Stethoscope, GraduationCap, HeartHandshake, ShieldPlus, User, Download, Loader2, Bus, PiggyBank, Archive, Accessibility, Wallet, AlertTriangle } from 'lucide-react';
+import { Info, UploadCloud, Building2, Stethoscope, GraduationCap, HeartHandshake, ShieldPlus, User, Download, Loader2, Bus, PiggyBank, Archive, Accessibility, Wallet, AlertTriangle, Send } from 'lucide-react';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/app/store/Store';
-import { exportInvoicesApi } from '@/app/lib/api/invoices';
+import { exportInvoicesApi, sendAccountantReportApi } from '@/app/lib/api/invoices';
 import {
     Dialog,
     DialogContent,
@@ -30,6 +30,10 @@ export default function DashboardPage() {
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [income, setIncome] = useState<string>('');
     const [isExporting, setIsExporting] = useState(false);
+    
+    const [showAccountantModal, setShowAccountantModal] = useState(false);
+    const [accountantEmail, setAccountantEmail] = useState('');
+    const [isSending, setIsSending] = useState(false);
 
     useEffect(() => {
         fetchProfile().then(() => {
@@ -79,6 +83,33 @@ export default function DashboardPage() {
         }
     };
 
+    const handleSendToAccountant = async () => {
+        if (!accountantEmail || !accountantEmail.includes('@')) {
+            toast.error("Por favor ingresa un correo electrónico válido");
+            return;
+        }
+
+        if (profile?.subscription_status !== 'premium') {
+            toast.error("El envío automático es exclusivo del Plan Premium.");
+            return;
+        }
+
+        setIsSending(true);
+        try {
+            await sendAccountantReportApi(url, accountantEmail, selectedYear);
+            toast.success(`Reporte enviado exitosamente a ${accountantEmail}`);
+            setShowAccountantModal(false);
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                toast.error(error.message);
+            } else {
+                toast.error("Error al enviar el reporte");
+            }
+        } finally {
+            setIsSending(false);
+        }
+    };
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
     };
@@ -115,16 +146,26 @@ export default function DashboardPage() {
                                 <div className="text-sm font-semibold text-[var(--color-deduce-navy)]">{user?.username || 'Usuario'}</div>
                                 <div className="text-xs text-slate-500 font-medium font-mono">RFC: {profile?.rfc || 'No registrado'}</div>
                             </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleExport}
-                                disabled={isExporting}
-                                className="text-xs h-8 border-[var(--color-deduce-teal)] text-[var(--color-deduce-navy)] hover:bg-[var(--color-deduce-teal)]/10"
-                            >
-                                {isExporting ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <Download className="w-3 h-3 mr-2" />}
-                                Exportar Excel
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleExport}
+                                    disabled={isExporting}
+                                    className="text-xs h-8 border-[var(--color-deduce-teal)] text-[var(--color-deduce-navy)] hover:bg-[var(--color-deduce-teal)]/10"
+                                >
+                                    {isExporting ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <Download className="w-3 h-3 mr-2" />}
+                                    Exportar Excel
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    onClick={() => setShowAccountantModal(true)}
+                                    className="text-xs h-8 bg-[var(--color-deduce-teal)] text-white hover:bg-[var(--color-deduce-teal)]/90"
+                                >
+                                    <Send className="w-3 h-3 mr-2" />
+                                    Enviar a mi Contador
+                                </Button>
+                            </div>
                         </div>
                         <div className="w-12 h-12 rounded-full overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400">
                             <User className="w-6 h-6" />
@@ -326,20 +367,61 @@ export default function DashboardPage() {
                                 Para calcular tu límite legal de deducciones (Art. 151 LISR), necesitamos tu ingreso anual estimado.
                             </DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="income">Ingreso Anual Estimado (MXN)</Label>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="income" className="text-right">
+                                    Ingreso Anual
+                                </Label>
                                 <Input
                                     id="income"
                                     type="number"
-                                    placeholder="Ej. 400000"
+                                    placeholder="Ej: 500000"
                                     value={income}
                                     onChange={(e) => setIncome(e.target.value)}
-                                    className="focus:border-[var(--color-deduce-teal)] focus:ring-[var(--color-deduce-teal)]/10"
+                                    className="col-span-3"
                                 />
                             </div>
-                            <Button onClick={handleSaveIncome} className="w-full bg-[var(--color-deduce-teal)] text-white hover:bg-[#0b7a70]">
-                                Guardar y Continuar
+                            <p className="text-xs text-slate-500 text-center">
+                                Usaremos este dato para calcular tu límite de deducciones (15% vs 5 UMA).
+                            </p>
+                        </div>
+                        <div className="flex justify-end mt-4">
+                            <Button onClick={handleSaveIncome} className="bg-[var(--color-deduce-teal)] hover:bg-[var(--color-deduce-teal)]/90 text-white">
+                                Guardar Ingreso
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={showAccountantModal} onOpenChange={setShowAccountantModal}>
+                    <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                            <DialogTitle>Enviar a mi Contador</DialogTitle>
+                            <DialogDescription>
+                                Ingresa el correo de tu contador. Le enviaremos el Excel de deducciones del año {selectedYear} al instante.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="accountant-email">
+                                    Correo del contador
+                                </Label>
+                                <Input
+                                    id="accountant-email"
+                                    type="email"
+                                    placeholder="contador@ejemplo.com"
+                                    value={accountantEmail}
+                                    onChange={(e) => setAccountantEmail(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end mt-4 gap-2">
+                            <Button variant="outline" onClick={() => setShowAccountantModal(false)}>
+                                Cancelar
+                            </Button>
+                            <Button onClick={handleSendToAccountant} disabled={isSending} className="bg-[var(--color-deduce-teal)] hover:bg-[var(--color-deduce-teal)]/90 text-white">
+                                {isSending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                                Enviar Reporte
                             </Button>
                         </div>
                     </DialogContent>

@@ -50,17 +50,30 @@ export default function InvoicesTable() {
 
     const categories = useMemo(() => {
         const cats = new Set(invoices.map(inv => inv.expense_type).filter(Boolean) as string[]);
-        return ['Todas', ...Array.from(cats)];
+        return ['Todas', '⚠️ Con inconsistencias', ...Array.from(cats)];
     }, [invoices]);
 
     const filteredInvoices = useMemo(() => {
         return invoices.filter(inv => {
             const matchesSearch = inv.issuer_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                   inv.expense_type?.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesCategory = categoryFilter === 'Todas' || inv.expense_type === categoryFilter;
+            
+            let matchesCategory = false;
+            if (categoryFilter === 'Todas') {
+                matchesCategory = true;
+            } else if (categoryFilter === '⚠️ Con inconsistencias') {
+                matchesCategory = inv.status === 'warning';
+            } else {
+                matchesCategory = inv.expense_type === categoryFilter;
+            }
+
             return matchesSearch && matchesCategory;
         });
     }, [invoices, searchTerm, categoryFilter]);
+
+    const warningInvoicesCount = useMemo(() => {
+        return invoices.filter(inv => inv.status === 'warning').length;
+    }, [invoices]);
 
     const handleDelete = async () => {
         if (invoiceToDelete) {
@@ -138,6 +151,21 @@ export default function InvoicesTable() {
 
     return (
         <div className="space-y-4">
+            {warningInvoicesCount > 0 && (
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start gap-4">
+                    <div className="p-2 bg-orange-100 rounded-lg shrink-0">
+                        <AlertTriangle className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold text-orange-900 mb-1">
+                            Atención requerida
+                        </h3>
+                        <p className="text-sm text-orange-700">
+                            Tienes {warningInvoicesCount} {warningInvoicesCount === 1 ? 'factura' : 'facturas'} con inconsistencias. Búscalas en la tabla usando el filtro &quot;⚠️ Con inconsistencias&quot; para ver qué corregir.
+                        </p>
+                    </div>
+                </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-4 mb-4">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
