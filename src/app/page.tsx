@@ -175,7 +175,7 @@ export default function Home() {
             <p className="text-slate-700 mb-6">No esperes a que tu contador haga el cálculo final. Visualiza tu saldo a favor proyectado cada vez que subes una factura.</p>
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-sm text-[var(--color-deduce-navy)] font-medium">
-                <CheckCircle2 className="w-4 h-4 text-[var(--color-deduce-teal)]" /> Cálculo basado en leyes vigentes 2024
+                <CheckCircle2 className="w-4 h-4 text-[var(--color-deduce-teal)]" /> Cálculo basado en leyes vigentes
               </li>
               <li className="flex items-center gap-2 text-sm text-[var(--color-deduce-navy)] font-medium">
                 <CheckCircle2 className="w-4 h-4 text-[var(--color-deduce-teal)]" /> Proyección de devolución ISR

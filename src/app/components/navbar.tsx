@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, X, Home, Folder, LogOut, LogIn, Sun, Moon } from "lucide-react";
+import { Menu, X, Home, Folder, LogOut, LogIn, Sun, Moon, Info } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {useAuthStore} from "../store/Store";
@@ -54,6 +54,11 @@ export default function Navbar() {
                             <Home size={20} /> Inicio
                         </Link>
                     </li>
+                    <li>
+                        <Link href="/como-funciona" className="flex items-center gap-2 hover:text-blue-600">
+                            <Info size={20} /> Cómo Funciona
+                        </Link>
+                    </li>
                     {/* si is Autenticates is Treu mostrar menu dashboard */}
                     {userAuth && (
                         <>
@@ -104,6 +109,11 @@ export default function Navbar() {
                         <li>
                             <Link href="/" className="flex items-center gap-2 text-slate-700 hover:text-blue-600" onClick={() => setMenuOpen(false)}>
                                 <Home size={20} /> Inicio
+                            </Link>
+                        </li>
+                        <li>
+                            <Link href="/como-funciona" className="flex items-center gap-2 text-slate-700 hover:text-blue-600" onClick={() => setMenuOpen(false)}>
+                                <Info size={20} /> Cómo Funciona
                             </Link>
                         </li>
                         {userAuth && (

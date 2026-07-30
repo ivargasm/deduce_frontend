@@ -18,6 +18,7 @@ export default function Sidebar() {
 
     const navItems = [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Guía de Uso", href: "/dashboard/guia", icon: HelpCircle },
         { name: "Planes", href: "/dashboard/billing", icon: CreditCard },
         { name: "Settings", href: "/dashboard/settings", icon: Settings },
     ];

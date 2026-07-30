@@ -7,14 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
 
 export default function ProfilePage() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { profile, fetchProfile, updateProfile, isLoading } = useDeductionsStore();
+    const { profile, summary, fetchProfile, fetchSummary, updateProfile, isLoading } = useDeductionsStore();
     const [rfc, setRfc] = useState('');
     const [income, setIncome] = useState('');
+    const [preferManual, setPreferManual] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
@@ -23,14 +25,21 @@ export default function ProfilePage() {
             if (currentProfile) {
                 setRfc(currentProfile.rfc || '');
                 setIncome(currentProfile.estimated_annual_income?.toString() || '');
+                setPreferManual(currentProfile.prefer_manual_income || false);
             }
         });
-    }, [fetchProfile]);
+        fetchSummary();
+    }, [fetchProfile, fetchSummary]);
+
+    const hasExactIncome = summary && summary.exact_income && summary.exact_income > 0;
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+    };
 
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            const dataToUpdate: { rfc?: string; estimated_annual_income?: number } = {};
+            const dataToUpdate: { rfc?: string; estimated_annual_income?: number; prefer_manual_income?: boolean } = {};
             if (rfc.trim() !== '') dataToUpdate.rfc = rfc.trim().toUpperCase();
             if (income.trim() !== '') {
                 const num = parseFloat(income);
@@ -38,6 +47,7 @@ export default function ProfilePage() {
                     dataToUpdate.estimated_annual_income = num;
                 }
             }
+            dataToUpdate.prefer_manual_income = preferManual;
 
             await updateProfile(dataToUpdate);
             toast.success("Perfil actualizado correctamente");
@@ -80,16 +90,60 @@ export default function ProfilePage() {
 
                         <div className="space-y-2">
                             <Label htmlFor="income">Ingreso Anual Estimado (MXN)</Label>
-                            <Input
-                                id="income"
-                                type="number"
-                                placeholder="Ej. 400000"
-                                value={income}
-                                onChange={(e) => setIncome(e.target.value)}
-                            />
-                            <p className="text-xs text-gray-500">
-                                Usado para calcular tu tope de 15%.
-                            </p>
+                            {hasExactIncome ? (
+                                <div className="space-y-4">
+                                    <div className={`p-4 rounded-lg border ${preferManual ? 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800'}`}>
+                                        <p className={`font-semibold ${preferManual ? 'text-orange-800 dark:text-orange-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
+                                            Ingreso Comprobado: {formatCurrency(summary.exact_income!)}
+                                        </p>
+                                        <p className={`text-sm mt-1 ${preferManual ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                            {preferManual 
+                                                ? "Has forzado el uso de tu estimación manual, por lo que este ingreso automático será ignorado para el cálculo global." 
+                                                : "Detectamos tus recibos de nómina. Este valor exacto está sustituyendo a tu estimación manual para calcular tu tope de deducciones y tu reembolso real."}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox 
+                                            id="override" 
+                                            checked={preferManual} 
+                                            onCheckedChange={(checked) => setPreferManual(checked as boolean)}
+                                        />
+                                        <label
+                                            htmlFor="override"
+                                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                        >
+                                            Forzar uso de ingreso manual (Si te faltan recibos de nómina)
+                                        </label>
+                                    </div>
+                                    {preferManual && (
+                                        <div className="mt-2 space-y-2">
+                                            <Input
+                                                id="income"
+                                                type="number"
+                                                placeholder="Ej. 400000"
+                                                value={income}
+                                                onChange={(e) => setIncome(e.target.value)}
+                                            />
+                                            <p className="text-xs text-gray-500">
+                                                Al estar forzado, este valor será usado para el cálculo.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <>
+                                    <Input
+                                        id="income"
+                                        type="number"
+                                        placeholder="Ej. 400000"
+                                        value={income}
+                                        onChange={(e) => setIncome(e.target.value)}
+                                    />
+                                    <p className="text-xs text-gray-500">
+                                        Usado para calcular tu tope de 15%.
+                                    </p>
+                                </>
+                            )}
                         </div>
 
                         <div className="p-4 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg flex items-start space-x-3 text-sm text-yellow-800 dark:text-yellow-200 mt-4">

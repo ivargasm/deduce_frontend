@@ -46,6 +46,8 @@ export interface InvoiceSummary {
     by_category: Record<string, number>;
     category_details: CategorySummary[];
     simulated_refund: number;
+    exact_income?: number;
+    exact_retention?: number;
 }
 
 export interface UserProfile {
@@ -56,6 +58,7 @@ export interface UserProfile {
     tax_regime: string | null;
     stripe_customer_id: string | null;
     subscription_status: string;
+    prefer_manual_income: boolean;
 }
 
 interface DeductionsState {

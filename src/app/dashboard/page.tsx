@@ -128,6 +128,13 @@ export default function DashboardPage() {
         { id: "Pagos por servicios educativos (colegiaturas).", label: "COLEGIATURAS", icon: GraduationCap, color: "text-orange-700", bg: "bg-orange-100", border: "border-orange-500", bar: "bg-orange-500" },
     ];
 
+    const exactIncome = summary?.exact_income || 0;
+    const manualIncome = profile?.estimated_annual_income || 0;
+    const hasDiscrepancy = exactIncome > 0 && manualIncome > 0 && exactIncome < (manualIncome * 0.8);
+    // getMonth() devuelve 0-11. Septiembre es 8, Octubre es 9.
+    const isQ4 = new Date().getMonth() >= 9;
+    const showDiscrepancyAlert = isQ4 && hasDiscrepancy && !profile?.prefer_manual_income;
+
     return (
         <ProtectedRoute>
             <div className="min-h-screen pb-12 w-full">
@@ -174,6 +181,19 @@ export default function DashboardPage() {
                 </header>
 
                 <div className="px-8 mt-8 max-w-[1200px] mx-auto">
+                    {showDiscrepancyAlert && (
+                        <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start space-x-3 text-sm text-amber-800 dark:text-amber-200">
+                            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <h4 className="font-semibold mb-1">⚠️ Posibles Nóminas Faltantes Detectadas</h4>
+                                <p>
+                                    Tus recibos de nómina suman <b>{formatCurrency(exactIncome)}</b>, pero habías estimado ganar <b>{formatCurrency(manualIncome)}</b> al año. 
+                                    Si te faltan recibos por subir, tu proyección de devolución será inexacta. Sube los XML faltantes o <a href="/dashboard/settings" className="underline font-semibold hover:text-amber-900 dark:hover:text-amber-100">cambia al modo manual en Configuración</a>.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {profile?.subscription_status !== 'premium' && (
                         <div className="mb-8 p-6 bg-gradient-to-r from-[var(--color-deduce-navy)] to-[var(--color-deduce-teal)] rounded-xl text-white shadow-lg flex flex-col sm:flex-row justify-between items-center gap-4">
                             <div>
