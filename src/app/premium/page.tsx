@@ -256,7 +256,7 @@ export default function PremiumPage() {
                     <div className="flex gap-4 text-sm text-slate-500">
                         <Link href="/privacidad" className="hover:text-[var(--color-deduce-navy)]">Privacidad</Link>
                         <Link href="/terminos" className="hover:text-[var(--color-deduce-navy)]">Términos</Link>
-                        <Link href="#" className="hover:text-[var(--color-deduce-navy)]">Contacto</Link>
+                        <Link href="mailto:contacto@juristechspace.com" className="hover:text-[var(--color-deduce-navy)]">Contacto</Link>
                     </div>
                 </div>
             </footer>

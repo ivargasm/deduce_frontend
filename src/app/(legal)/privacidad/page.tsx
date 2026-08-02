@@ -83,7 +83,7 @@ export default function PrivacidadPage() {
         </ul>
         <p className="text-sm mt-4">
           Si no desea que sus datos se utilicen para fines secundarios, puede manifestarlo desde este momento enviando 
-          un correo a soporte, sin que esto afecte el uso del servicio para sus fines primarios.
+          un correo a <a href="mailto:soporte@juristechspace.com" className="text-[var(--color-deduce-teal)] hover:underline font-semibold">soporte@juristechspace.com</a>, sin que esto afecte el uso del servicio para sus fines primarios.
         </p>
       </section>
 
@@ -132,7 +132,7 @@ export default function PrivacidadPage() {
           que nos haya otorgado, incluido el relativo a datos sensibles.
         </p>
         <p>
-          Para ejercer cualquiera de los derechos ARCO, envíe su solicitud al correo electrónico de soporte proporcionado.
+          Para ejercer cualquiera de los derechos ARCO, envíe su solicitud al correo electrónico <a href="mailto:soporte@juristechspace.com" className="text-[var(--color-deduce-teal)] hover:underline font-semibold">soporte@juristechspace.com</a>.
         </p>
       </section>
 

@@ -210,9 +210,11 @@ export default function Home() {
                   Empezar ahora
                 </Button>
               </Link>
-              <Button size="lg" variant="outline" className="w-full sm:w-auto h-14 px-8 rounded-xl text-lg border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white">
-                Hablar con ventas
-              </Button>
+              <Link href="mailto:contacto@juristechspace.com" className="w-full sm:w-auto">
+                <Button size="lg" variant="outline" className="w-full h-14 px-8 rounded-xl text-lg border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white">
+                  Hablar con ventas
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
