@@ -24,7 +24,7 @@ function LoginContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const redirectUrl = searchParams.get('redirect');
-    const { url, loginUser, userValid, userAuth, user } = useAuthStore();
+    const { loginUser, userValid, userAuth, user } = useAuthStore();
 
     const [globalError, setGlobalError] = useState("");
     const [showPassword, setShowPassword] = useState(false)
@@ -79,23 +79,23 @@ function LoginContent() {
             {/* Left Side - Image/Branding */}
             <div className="hidden md:flex md:w-1/2 relative bg-[var(--color-deduce-navy)] overflow-hidden flex-col justify-between p-12 text-white">
                 <div className="absolute inset-0 z-0">
-                    <Image 
-                        src="/auth_bg.png" 
-                        alt="Deduce Abstract Background" 
-                        fill 
+                    <Image
+                        src="/auth_bg.png"
+                        alt="Deduce Abstract Background"
+                        fill
                         className="object-cover opacity-60"
                         priority
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-deduce-navy)]/80 via-transparent to-[var(--color-deduce-navy)]"></div>
                 </div>
-                
+
                 <div className="relative z-10">
                     <h1 className="text-4xl font-bold font-display tracking-tight flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-[var(--color-deduce-teal)] shadow-[0_0_15px_rgba(45,212,191,0.5)]"></div>
                         DEDUCE
                     </h1>
                 </div>
-                
+
                 <div className="relative z-10 max-w-md">
                     <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display leading-tight">
                         Optimiza tu carga fiscal de forma inteligente.
@@ -108,7 +108,7 @@ function LoginContent() {
 
             {/* Right Side - Login Form */}
             <div className="w-full md:w-1/2 flex items-center justify-center p-6 md:p-12 relative">
-                
+
                 {/* Decorative background elements for right side */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--color-deduce-teal)]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
