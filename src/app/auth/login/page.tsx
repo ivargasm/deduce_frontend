@@ -61,7 +61,7 @@ function LoginContent() {
         setIsSubmitting(true);
 
         try {
-            await loginUser(data.email, data.password, url);
+            await loginUser(data.email, data.password);
             router.push(redirectUrl || "/dashboard");
         } catch (err: unknown) {
             if (err instanceof Error) {

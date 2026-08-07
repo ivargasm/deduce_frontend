@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ProtectedRoute from '@/app/components/ProtectedRoutes';
 import { useDeductionsStore } from '@/app/store/DeductionsStore';
 import UploadZone from '@/components/UploadZone';
 import InvoicesTable from '@/components/InvoicesTable';
@@ -136,7 +135,6 @@ export default function DashboardPage() {
     const showDiscrepancyAlert = isQ4 && hasDiscrepancy && !profile?.prefer_manual_income;
 
     return (
-        <ProtectedRoute>
             <div className="min-h-screen pb-12 w-full">
 
                 {/* Top Header Section */}
@@ -448,6 +446,5 @@ export default function DashboardPage() {
                 </Dialog>
 
             </div>
-        </ProtectedRoute>
     );
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Settings, HelpCircle, LogOut, Menu, X, Crown, Zap, CreditCard } from "lucide-react";
+import { LayoutDashboard, Settings, HelpCircle, LogOut, Menu, X, Crown, Zap, CreditCard, Shield } from "lucide-react";
 import { useAuthStore } from "@/app/store/Store";
 import { useDeductionsStore } from "@/app/store/DeductionsStore";
 
@@ -22,6 +22,11 @@ export default function Sidebar() {
         { name: "Planes", href: "/dashboard/billing", icon: CreditCard },
         { name: "Settings", href: "/dashboard/settings", icon: Settings },
     ];
+
+    const { user } = useAuthStore();
+    if (user?.role === 'admin') {
+        navItems.push({ name: "Admin Panel", href: "/dashboard/admin", icon: Shield });
+    }
 
     return (
         <>

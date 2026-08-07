@@ -12,8 +12,11 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     useEffect(() => {
         const checkAuth = async () => {
             await userValid();
-            if (!useAuthStore.getState().userAuth) {
+            const { userAuth, user } = useAuthStore.getState();
+            if (!userAuth) {
                 router.push("/auth/login");
+            } else if (window.location.pathname.startsWith("/dashboard/admin") && user?.role !== 'admin') {
+                router.push("/dashboard");
             }
         };
         checkAuth();

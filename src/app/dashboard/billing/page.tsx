@@ -5,7 +5,6 @@ import { useAuthStore } from '@/app/store/Store';
 import { createCheckoutSessionApi, createPortalSessionApi } from '@/app/lib/api/payments';
 import { Card } from '@/components/ui/card';
 import { Check, X, Zap, Crown, Loader2 } from 'lucide-react';
-import ProtectedRoute from '@/app/components/ProtectedRoutes';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -43,7 +42,6 @@ export default function BillingPage() {
     };
 
     return (
-        <ProtectedRoute>
             <div className="min-h-screen pb-12 w-full">
                 {/* Top Header Section */}
                 <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-8 py-8 border-b border-slate-200 bg-white">
@@ -188,6 +186,5 @@ export default function BillingPage() {
                     </div>
                 </div>
             </div>
-        </ProtectedRoute>
     );
 }

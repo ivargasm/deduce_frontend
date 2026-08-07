@@ -6,7 +6,7 @@ interface AuthState {
     setUser: (user: AuthState['user']) => void;
     logout: () => void;
     url: string;
-    loginUser: (email: string, password: string, ur: string) => Promise<void>;
+    loginUser: (email: string, password: string) => Promise<void>;
     userAuth: boolean;
     isLoading: boolean;
     userValid: () => Promise<void>;
@@ -61,6 +61,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     },
     registerUser: async (username, email, password, accept_terms) => {
         const data = await register(username, email, password, accept_terms, useAuthStore.getState().url);
+        if (data) {
+            await useAuthStore.getState().loginUser(email, password);
+        }
         return data;
     },
     renewSession: async () => {
