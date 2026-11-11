@@ -8,11 +8,20 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Trash2, GraduationCap } from 'lucide-react';
 
 export default function ProfilePage() {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { profile, summary, fetchProfile, fetchSummary, updateProfile, isLoading } = useDeductionsStore();
+    const {
+        summary,
+        issuerRules,
+        fetchProfile,
+        fetchSummary,
+        fetchIssuerRules,
+        updateProfile,
+        updateIssuerRule,
+        deleteIssuerRule,
+        isLoading,
+    } = useDeductionsStore();
     const [rfc, setRfc] = useState('');
     const [income, setIncome] = useState('');
     const [preferManual, setPreferManual] = useState(false);
@@ -28,7 +37,26 @@ export default function ProfilePage() {
             }
         });
         fetchSummary();
-    }, [fetchProfile, fetchSummary]);
+        fetchIssuerRules();
+    }, [fetchProfile, fetchSummary, fetchIssuerRules]);
+
+    const handleToggleRule = async (ruleId: number, currentActive: boolean) => {
+        try {
+            await updateIssuerRule(ruleId, { auto_apply: !currentActive });
+            toast.success(!currentActive ? "Regla activada" : "Regla pausada");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "Error al actualizar la regla");
+        }
+    };
+
+    const handleDeleteRule = async (ruleId: number, issuerName: string) => {
+        try {
+            await deleteIssuerRule(ruleId);
+            toast.success(`Regla eliminada (${issuerName})`);
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "Error al eliminar la regla");
+        }
+    };
 
     const hasExactIncome = summary && summary.exact_income && summary.exact_income > 0;
     const formatCurrency = (amount: number) => {
@@ -161,6 +189,86 @@ export default function ProfilePage() {
                             {isSaving ? "Guardando..." : "Guardar Cambios"}
                         </Button>
                     </CardFooter>
+                </Card>
+
+                <Card className="mt-8">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <GraduationCap className="w-5 h-5 text-[var(--color-deduce-teal)]" />
+                            Reglas de Colegiaturas por Emisor (D10)
+                        </CardTitle>
+                        <CardDescription>
+                            Cuando subas nuevas facturas D10 sin complemento IEDU de estas instituciones (y que no sean pago en efectivo), Deduce aplicará estos datos automáticamente.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {issuerRules.length === 0 ? (
+                            <p className="text-sm text-slate-500">
+                                Aún no tienes reglas guardadas. Puedes activar una desde el modal de <strong>Editar Factura</strong> marcando la opción <em>Recordar CURP y nivel</em>.
+                            </p>
+                        ) : (
+                            <div className="space-y-3">
+                                {issuerRules.map((rule) => (
+                                    <div
+                                        key={rule.id}
+                                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-slate-200 bg-slate-50/70"
+                                    >
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-sm text-slate-900">
+                                                    {rule.issuer_name || rule.issuer_rfc}
+                                                </span>
+                                                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-mono">
+                                                    {rule.issuer_rfc}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-600">
+                                                Uso: <strong>{rule.cfdi_use}</strong> · Nivel: <strong>{rule.educational_level || '-'}</strong> · CURP: <span className="font-mono">{rule.student_curp || '-'}</span>
+                                            </p>
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <span className="text-[11px] text-slate-500 whitespace-nowrap">Palabra clave:</span>
+                                                <Input
+                                                    key={`${rule.id}-${rule.match_keyword || ''}`}
+                                                    defaultValue={rule.match_keyword || ''}
+                                                    placeholder="Opcional (ej. nombre del alumno)"
+                                                    onBlur={(e) => {
+                                                        const nextVal = e.target.value.trim();
+                                                        if (nextVal !== (rule.match_keyword || '')) {
+                                                            updateIssuerRule(rule.id, { match_keyword: nextVal })
+                                                                .then(() => toast.success("Palabra clave actualizada"))
+                                                                .catch(() => toast.error("Error al actualizar palabra clave"));
+                                                        }
+                                                    }}
+                                                    className="h-7 text-xs bg-white max-w-xs"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleToggleRule(rule.id, rule.auto_apply)}
+                                                className={rule.auto_apply ? "text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100" : "text-slate-600"}
+                                            >
+                                                {rule.auto_apply ? "Activa" : "Pausada"}
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleDeleteRule(rule.id, rule.issuer_name || rule.issuer_rfc)}
+                                                className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                                title="Eliminar regla"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
                 </Card>
             </div>
     );

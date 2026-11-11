@@ -30,23 +30,49 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { AlertCircle, CheckCircle2, AlertTriangle, Trash2, Search, Filter, Edit2, Loader2 } from 'lucide-react';
 import { useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
 
 export default function InvoicesTable() {
-    const { invoices, fetchInvoices, isLoading, deleteInvoice, updateInvoice } = useDeductionsStore();
+    const {
+        invoices,
+        issuerRules,
+        selectedYear,
+        fetchInvoices,
+        fetchIssuerRules,
+        isLoading,
+        deleteInvoice,
+        updateInvoice,
+    } = useDeductionsStore();
     const [invoiceToDelete, setInvoiceToDelete] = useState<number | null>(null);
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
     const [editCfdiUse, setEditCfdiUse] = useState('');
     const [editCurp, setEditCurp] = useState('');
     const [editNivel, setEditNivel] = useState('');
+    const [editMatchKeyword, setEditMatchKeyword] = useState('');
+    const [applyToSimilar, setApplyToSimilar] = useState(false);
+    const [rememberForIssuer, setRememberForIssuer] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('Todas');
 
     const nivelesOptions = ["Preescolar", "Primaria", "Secundaria", "Profesional técnico", "Bachillerato o su equivalente"];
+
+    const usoCfdiOptions = [
+        { code: 'D01', label: 'D01 - Honorarios médicos, dentales y gastos hospitalarios' },
+        { code: 'D02', label: 'D02 - Gastos médicos por incapacidad o discapacidad' },
+        { code: 'D03', label: 'D03 - Gastos funerales' },
+        { code: 'D04', label: 'D04 - Donativos' },
+        { code: 'D05', label: 'D05 - Intereses reales por créditos hipotecarios' },
+        { code: 'D06', label: 'D06 - Aportaciones voluntarias al SAR' },
+        { code: 'D07', label: 'D07 - Primas por seguros de gastos médicos' },
+        { code: 'D08', label: 'D08 - Gastos de transportación escolar obligatoria' },
+        { code: 'D09', label: 'D09 - Depósitos en cuentas para el ahorro' },
+        { code: 'D10', label: 'D10 - Pagos por servicios educativos (colegiaturas)' },
+    ];
 
     const categories = useMemo(() => {
         const cats = new Set(invoices.map(inv => inv.expense_type).filter(Boolean) as string[]);
@@ -62,7 +88,7 @@ export default function InvoicesTable() {
             if (categoryFilter === 'Todas') {
                 matchesCategory = true;
             } else if (categoryFilter === '⚠️ Con inconsistencias') {
-                matchesCategory = inv.status === 'warning';
+                matchesCategory = inv.status === 'warning' || inv.status === 'invalid';
             } else {
                 matchesCategory = inv.expense_type === categoryFilter;
             }
@@ -72,8 +98,70 @@ export default function InvoicesTable() {
     }, [invoices, searchTerm, categoryFilter]);
 
     const warningInvoicesCount = useMemo(() => {
-        return invoices.filter(inv => inv.status === 'warning').length;
+        return invoices.filter(inv => inv.status === 'warning' || inv.status === 'invalid').length;
     }, [invoices]);
+
+    const savedStudents = useMemo(() => {
+        const seen = new Map<string, { curp: string; level: string }>();
+        for (const rule of issuerRules) {
+            if (rule.student_curp && rule.educational_level) {
+                const key = `${rule.student_curp.toUpperCase()}|${rule.educational_level}`;
+                if (!seen.has(key)) {
+                    seen.set(key, { curp: rule.student_curp.toUpperCase(), level: rule.educational_level });
+                }
+            }
+        }
+        for (const inv of invoices) {
+            if (inv.student_curp && inv.educational_level) {
+                const key = `${inv.student_curp.toUpperCase()}|${inv.educational_level}`;
+                if (!seen.has(key)) {
+                    seen.set(key, { curp: inv.student_curp.toUpperCase(), level: inv.educational_level });
+                }
+            }
+        }
+        return Array.from(seen.values());
+    }, [issuerRules, invoices]);
+
+    const matchingPendingCount = useMemo(() => {
+        if (!invoiceToEdit) return 0;
+        const targetRfc = (invoiceToEdit.issuer_rfc || '').toUpperCase();
+        const targetUse = (invoiceToEdit.cfdi_use || '').toUpperCase();
+        return invoices.filter(inv =>
+            inv.id !== invoiceToEdit.id &&
+            (!inv.invoice_type || inv.invoice_type === 'DEDUCTION') &&
+            (inv.status === 'warning' || inv.status === 'invalid') &&
+            inv.payment_method !== '01' &&
+            (inv.issuer_rfc || '').toUpperCase() === targetRfc &&
+            (inv.cfdi_use || '').toUpperCase() === targetUse
+        ).length;
+    }, [invoiceToEdit, invoices]);
+
+    const issuerD10Rules = useMemo(() => {
+        if (!invoiceToEdit) return [];
+        const targetRfc = (invoiceToEdit.issuer_rfc || '').toUpperCase();
+        return issuerRules.filter(
+            r => r.issuer_rfc.toUpperCase() === targetRfc && r.cfdi_use.toUpperCase() === 'D10'
+        );
+    }, [invoiceToEdit, issuerRules]);
+
+    const issuerKnownStudentsCount = useMemo(() => {
+        if (!invoiceToEdit) return 0;
+        const targetRfc = (invoiceToEdit.issuer_rfc || '').toUpperCase();
+        const curps = new Set<string>();
+        for (const r of issuerD10Rules) {
+            if (r.student_curp) curps.add(r.student_curp.toUpperCase());
+        }
+        for (const inv of invoices) {
+            if (
+                (inv.issuer_rfc || '').toUpperCase() === targetRfc &&
+                (inv.cfdi_use || '').toUpperCase() === 'D10' &&
+                inv.student_curp
+            ) {
+                curps.add(inv.student_curp.toUpperCase());
+            }
+        }
+        return curps.size;
+    }, [invoiceToEdit, issuerD10Rules, invoices]);
 
     const handleDelete = async () => {
         if (invoiceToDelete) {
@@ -93,22 +181,76 @@ export default function InvoicesTable() {
     };
 
     const handleOpenEdit = (inv: Invoice) => {
+        const cfdiUseUpper = (inv.cfdi_use || '').toUpperCase();
+        const targetRfc = (inv.issuer_rfc || '').toUpperCase();
+        const rulesForIssuer = issuerRules.filter(
+            r => r.issuer_rfc.toUpperCase() === targetRfc && r.cfdi_use.toUpperCase() === 'D10'
+        );
+        const activeRulesForIssuer = rulesForIssuer.filter(r => r.auto_apply);
+        const curpsForIssuer = new Set<string>();
+        for (const r of rulesForIssuer) {
+            if (r.student_curp) curpsForIssuer.add(r.student_curp.toUpperCase());
+        }
+        for (const item of invoices) {
+            if (
+                (item.issuer_rfc || '').toUpperCase() === targetRfc &&
+                (item.cfdi_use || '').toUpperCase() === 'D10' &&
+                item.student_curp
+            ) {
+                curpsForIssuer.add(item.student_curp.toUpperCase());
+            }
+        }
+
+        const singleSafeRule =
+            activeRulesForIssuer.length === 1 && curpsForIssuer.size <= 1
+                ? activeRulesForIssuer[0]
+                : null;
+        const currentStudentRule = inv.student_curp
+            ? rulesForIssuer.find(r => (r.student_curp || '').toUpperCase() === inv.student_curp!.toUpperCase())
+            : singleSafeRule;
+
         setInvoiceToEdit(inv);
-        setEditCfdiUse(inv.cfdi_use || '');
-        setEditCurp(inv.student_curp || '');
-        setEditNivel(inv.educational_level || '');
+        setEditCfdiUse(cfdiUseUpper);
+        setEditCurp(inv.student_curp || (cfdiUseUpper === 'D10' ? (singleSafeRule?.student_curp || '') : ''));
+        setEditNivel(inv.educational_level || (cfdiUseUpper === 'D10' ? (singleSafeRule?.educational_level || '') : ''));
+        setEditMatchKeyword(currentStudentRule?.match_keyword || '');
+        setApplyToSimilar(false);
+        setRememberForIssuer(false);
     };
 
     const handleSaveEdit = async () => {
         if (!invoiceToEdit) return;
+        const normalizedUse = editCfdiUse.trim().toUpperCase();
+        const normalizedCurp = editCurp.trim().toUpperCase();
+        const normalizedNivel = editNivel.trim();
+
+        if (rememberForIssuer && normalizedUse === 'D10' && (!normalizedCurp || !normalizedNivel)) {
+            toast.error("Para recordar la regla en colegiaturas (D10) debes capturar CURP y Nivel Educativo");
+            return;
+        }
+
         setIsSaving(true);
         try {
-            await updateInvoice(invoiceToEdit.id, {
-                cfdi_use: editCfdiUse,
-                student_curp: editCurp,
-                educational_level: editNivel,
+            const result = await updateInvoice(invoiceToEdit.id, {
+                cfdi_use: normalizedUse,
+                student_curp: normalizedCurp,
+                educational_level: normalizedNivel,
+                apply_to_similar: applyToSimilar,
+                remember_for_issuer: rememberForIssuer,
+                match_keyword: rememberForIssuer ? editMatchKeyword.trim() : undefined,
             });
-            toast.success("Factura actualizada correctamente");
+            const extraParts: string[] = [];
+            if (result?.updated_similar_count && result.updated_similar_count > 0) {
+                extraParts.push(`${result.updated_similar_count} similar(es) corregida(s)`);
+            }
+            if (result?.rule_saved) {
+                extraParts.push("regla guardada para futuras cargas");
+            }
+            toast.success(
+                extraParts.length > 0
+                    ? `Factura actualizada (${extraParts.join(' · ')})`
+                    : "Factura actualizada y re-evaluada correctamente"
+            );
             setInvoiceToEdit(null);
         } catch (error: unknown) {
             if (error instanceof Error) {
@@ -123,7 +265,8 @@ export default function InvoicesTable() {
 
     useEffect(() => {
         fetchInvoices();
-    }, [fetchInvoices]);
+        fetchIssuerRules();
+    }, [fetchInvoices, fetchIssuerRules]);
 
     if (isLoading && invoices.length === 0) {
         return <div className="text-center py-10">Cargando facturas...</div>;
@@ -225,13 +368,15 @@ export default function InvoicesTable() {
                             </TableCell>
                             <TableCell>
                                 <div className="flex justify-center items-center gap-2">
-                                    <button 
-                                        onClick={() => handleOpenEdit(inv)}
-                                        className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"
-                                        title="Editar factura"
-                                    >
-                                        <Edit2 className="w-4 h-4" />
-                                    </button>
+                                    {(!inv.invoice_type || inv.invoice_type === 'DEDUCTION') && (
+                                        <button 
+                                            onClick={() => handleOpenEdit(inv)}
+                                            className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                                            title="Editar factura"
+                                        >
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+                                    )}
                                     <button 
                                         onClick={() => setInvoiceToDelete(inv.id)}
                                         className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
@@ -275,17 +420,58 @@ export default function InvoicesTable() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
+                        {invoiceToEdit?.warning_messages && invoiceToEdit.warning_messages.length > 0 && (
+                            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
+                                <p className="font-semibold">Observaciones actuales:</p>
+                                <ul className="list-disc pl-4 space-y-0.5">
+                                    {invoiceToEdit.warning_messages.map((msg, idx) => (
+                                        <li key={idx}>{msg}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <div className="space-y-2">
                             <Label>Uso CFDI</Label>
-                            <Input
+                            <select
                                 value={editCfdiUse}
                                 onChange={(e) => setEditCfdiUse(e.target.value)}
-                                placeholder="Ej. D10"
-                                className="focus:border-[var(--color-deduce-teal)]"
-                            />
+                                className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-deduce-teal)]"
+                            >
+                                {invoiceToEdit?.cfdi_use && !usoCfdiOptions.some(opt => opt.code === invoiceToEdit.cfdi_use.toUpperCase()) && (
+                                    <option value={invoiceToEdit.cfdi_use.toUpperCase()}>
+                                        {invoiceToEdit.cfdi_use.toUpperCase()} - Actual (No deducible / revisar)
+                                    </option>
+                                )}
+                                {usoCfdiOptions.map(opt => (
+                                    <option key={opt.code} value={opt.code}>{opt.label}</option>
+                                ))}
+                            </select>
                         </div>
                         {editCfdiUse === 'D10' && (
                             <>
+                                {savedStudents.length > 0 && (
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-slate-500">Alumno guardado (opcional)</Label>
+                                        <select
+                                            value=""
+                                            onChange={(e) => {
+                                                const selected = savedStudents.find(s => `${s.curp}|${s.level}` === e.target.value);
+                                                if (selected) {
+                                                    setEditCurp(selected.curp);
+                                                    setEditNivel(selected.level);
+                                                }
+                                            }}
+                                            className="flex h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-deduce-teal)]"
+                                        >
+                                            <option value="">Seleccionar alumno capturado previamente...</option>
+                                            {savedStudents.map((s) => (
+                                                <option key={`${s.curp}|${s.level}`} value={`${s.curp}|${s.level}`}>
+                                                    {s.level} — {s.curp}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     <Label>Nivel Educativo</Label>
                                     <select
@@ -309,6 +495,65 @@ export default function InvoicesTable() {
                                     />
                                 </div>
                             </>
+                        )}
+                        {(matchingPendingCount > 0 || editCfdiUse === 'D10') && (
+                            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
+                                {matchingPendingCount > 0 && (
+                                    <div className="flex items-start space-x-2.5">
+                                        <Checkbox
+                                            id="apply-similar"
+                                            checked={applyToSimilar}
+                                            onCheckedChange={(checked) => setApplyToSimilar(checked === true)}
+                                            className="mt-0.5"
+                                        />
+                                        <label htmlFor="apply-similar" className="text-xs text-slate-700 leading-snug cursor-pointer">
+                                            <span className="font-semibold">
+                                                Aplicar también a otras {matchingPendingCount} {matchingPendingCount === 1 ? 'factura con incidencia' : 'facturas con incidencia'} de este emisor ({selectedYear})
+                                            </span>
+                                            <span className="block text-slate-500 mt-0.5">
+                                                Excluye facturas ya válidas y pagos en efectivo.
+                                            </span>
+                                        </label>
+                                    </div>
+                                )}
+                                {editCfdiUse === 'D10' && (
+                                    <div className="space-y-2">
+                                        <div className="flex items-start space-x-2.5">
+                                            <Checkbox
+                                                id="remember-issuer"
+                                                checked={rememberForIssuer}
+                                                onCheckedChange={(checked) => setRememberForIssuer(checked === true)}
+                                                className="mt-0.5"
+                                            />
+                                            <label htmlFor="remember-issuer" className="text-xs text-slate-700 leading-snug cursor-pointer">
+                                                <span className="font-semibold">
+                                                    Recordar CURP y nivel para futuras facturas D10 de {invoiceToEdit?.issuer_name}
+                                                </span>
+                                                <span className="block text-slate-500 mt-0.5">
+                                                    {issuerKnownStudentsCount > 1
+                                                        ? `Hay ${issuerKnownStudentsCount} alumnos registrados en este emisor: indica una palabra clave del concepto para aplicar esta regla solo a este alumno.`
+                                                        : issuerD10Rules.length > 0
+                                                            ? `Ya existe una regla (${issuerD10Rules[0].educational_level} - ${issuerD10Rules[0].student_curp}). Si usas la misma CURP se actualizará; si es otra CURP se agregará aparte.`
+                                                            : 'Al subir nuevos XML D10 sin complemento IEDU de esta escuela, se completarán automáticamente si coinciden con este alumno.'}
+                                                </span>
+                                            </label>
+                                        </div>
+                                        {rememberForIssuer && (
+                                            <div className="pl-6 space-y-1">
+                                                <Label className="text-[11px] text-slate-600">
+                                                    Palabra clave en concepto (opcional{issuerKnownStudentsCount > 1 ? ' · recomendada' : ''})
+                                                </Label>
+                                                <Input
+                                                    value={editMatchKeyword}
+                                                    onChange={(e) => setEditMatchKeyword(e.target.value)}
+                                                    placeholder="Ej. Nombre o matrícula del alumno en el XML"
+                                                    className="h-8 text-xs bg-white"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                     <DialogFooter>
@@ -339,7 +584,7 @@ function StatusBadge({ status, messages }: { status: string; messages: string[] 
                     <AlertTriangle className="w-3.5 h-3.5" /> Revisar
                 </div>
                 {messages && messages.length > 0 && (
-                    <span className="text-[10px] text-[var(--color-deduce-amber)] truncate max-w-[150px]" title={messages[0]}>
+                    <span className="text-[10px] text-[var(--color-deduce-amber)] truncate max-w-[150px]" title={messages.join(' • ')}>
                         {messages[0]}
                     </span>
                 )}
@@ -353,7 +598,7 @@ function StatusBadge({ status, messages }: { status: string; messages: string[] 
                 <AlertCircle className="w-3.5 h-3.5" /> Error
             </div>
             {messages && messages.length > 0 && (
-                <span className="text-[10px] text-[var(--color-deduce-coral)] truncate max-w-[150px]" title={messages[0]}>
+                <span className="text-[10px] text-[var(--color-deduce-coral)] truncate max-w-[150px]" title={messages.join(' • ')}>
                     {messages[0]}
                 </span>
             )}

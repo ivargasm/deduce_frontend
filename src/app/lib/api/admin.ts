@@ -93,7 +93,42 @@ export const updateAdminTaxBracketApi = async (url: string, bracketId: number, d
     return res.json();
 };
 
-export const updateAdminDeductionLimitApi = async (url: string, limitId: number, data: Record<string, number | null>) => {
+export interface DeductionLimitPayload {
+    categoria: string;
+    tipo_limite: string;
+    monto_fijo: number | null;
+    porcentaje: number | null;
+    cuenta_para_tope_global: boolean;
+    fuente_legal?: string | null;
+}
+
+export const createAdminDeductionLimitApi = async (url: string, data: DeductionLimitPayload) => {
+    const res = await fetch(`${url}/api/admin/deduction-limits`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'Error al crear límite de deducción');
+    }
+    return res.json();
+};
+
+export const seedAdminDeductionLimitsApi = async (url: string) => {
+    const res = await fetch(`${url}/api/admin/deduction-limits/seed`, {
+        method: "POST",
+        credentials: "include"
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'Error al cargar límites oficiales del SAT');
+    }
+    return res.json();
+};
+
+export const updateAdminDeductionLimitApi = async (url: string, limitId: number, data: Record<string, number | boolean | string | null>) => {
     const res = await fetch(`${url}/api/admin/deduction-limits/${limitId}`, {
         method: "PUT",
         credentials: "include",
@@ -101,6 +136,15 @@ export const updateAdminDeductionLimitApi = async (url: string, limitId: number,
         body: JSON.stringify(data)
     });
     if (!res.ok) throw new Error('Error al actualizar límite de deducción');
+    return res.json();
+};
+
+export const deleteAdminDeductionLimitApi = async (url: string, limitId: number) => {
+    const res = await fetch(`${url}/api/admin/deduction-limits/${limitId}`, {
+        method: "DELETE",
+        credentials: "include"
+    });
+    if (!res.ok) throw new Error('Error al eliminar límite de deducción');
     return res.json();
 };
 

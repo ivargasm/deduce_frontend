@@ -51,7 +51,14 @@ export const deleteInvoiceApi = async (url: string, invoiceId: number) => {
 export const updateInvoiceApi = async (
     url: string, 
     invoiceId: number, 
-    data: { cfdi_use?: string; student_curp?: string; educational_level?: string }
+    data: {
+        cfdi_use?: string;
+        student_curp?: string;
+        educational_level?: string;
+        apply_to_similar?: boolean;
+        remember_for_issuer?: boolean;
+        match_keyword?: string;
+    }
 ) => {
     const res = await fetch(`${url}/api/invoices/${invoiceId}`, {
         method: 'PATCH',
@@ -65,6 +72,41 @@ export const updateInvoiceApi = async (
         const errorData = await res.json().catch(() => null);
         throw new Error(errorData?.detail || 'Error al actualizar factura');
     }
+    return res.json();
+};
+
+export const fetchIssuerRulesApi = async (url: string) => {
+    const res = await fetch(`${url}/api/invoices/issuer-rules`, { credentials: 'include' });
+    if (!res.ok) throw new Error('Error al obtener reglas por emisor');
+    return res.json();
+};
+
+export const updateIssuerRuleApi = async (
+    url: string,
+    ruleId: number,
+    data: { student_curp?: string; educational_level?: string; match_keyword?: string; auto_apply?: boolean }
+) => {
+    const res = await fetch(`${url}/api/invoices/issuer-rules/${ruleId}`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'Error al actualizar regla');
+    }
+    return res.json();
+};
+
+export const deleteIssuerRuleApi = async (url: string, ruleId: number) => {
+    const res = await fetch(`${url}/api/invoices/issuer-rules/${ruleId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Error al eliminar regla');
     return res.json();
 };
 

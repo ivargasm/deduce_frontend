@@ -117,7 +117,7 @@ export default function DashboardPage() {
     const categoryConfigs = [
         { id: "Honorarios médicos, dentales y gastos hospitalarios.", label: "MÉDICOS", icon: Stethoscope, color: "text-green-700", bg: "bg-green-100", border: "border-green-600", bar: "bg-green-600" },
         { id: "Gastos médicos por incapacidad o discapacidad.", label: "INCAPACIDAD", icon: Accessibility, color: "text-indigo-700", bg: "bg-indigo-100", border: "border-indigo-600", bar: "bg-indigo-600" },
-        { id: "Gastos de funerales.", label: "FUNERALES", icon: Archive, color: "text-purple-700", bg: "bg-purple-100", border: "border-purple-600", bar: "bg-purple-600" },
+        { id: "Gastos funerales.", label: "FUNERALES", icon: Archive, color: "text-purple-700", bg: "bg-purple-100", border: "border-purple-600", bar: "bg-purple-600" },
         { id: "Donativos.", label: "DONATIVOS", icon: HeartHandshake, color: "text-slate-700", bg: "bg-slate-100", border: "border-slate-300", bar: "bg-slate-300" },
         { id: "Intereses reales efectivamente pagados por créditos hipotecarios.", label: "HIPOTECAS", icon: Building2, color: "text-red-700", bg: "bg-red-100", border: "border-red-600", bar: "bg-red-600" },
         { id: "Aportaciones voluntarias al SAR.", label: "RETIRO (SAR)", icon: PiggyBank, color: "text-amber-700", bg: "bg-amber-100", border: "border-amber-600", bar: "bg-amber-600" },
@@ -227,12 +227,30 @@ export default function DashboardPage() {
                                     <p className="text-xs text-slate-500">Tope Global ({summary?.limit_reason || "Art. 151 LISR"})</p>
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-4xl font-bold text-[var(--color-deduce-teal)] tabular-nums font-display">
-                                        {formatCurrency(summary?.simulated_refund || 0)} <span className="text-xl text-slate-400 font-medium">MXN</span>
-                                    </div>
-                                    <div className="text-xs font-semibold text-[#86f2e4] tracking-wide uppercase mt-1">
-                                        Ahorro estimado actual
-                                    </div>
+                                    {(() => {
+                                        const hasRetentionProjection = (summary?.exact_retention ?? 0) > 0 && !profile?.prefer_manual_income;
+                                        const mainAmount = hasRetentionProjection
+                                            ? (summary?.simulated_refund || 0)
+                                            : (summary?.deductions_tax_savings ?? summary?.simulated_refund ?? 0);
+                                        const isTaxDue = hasRetentionProjection && mainAmount < 0;
+                                        return (
+                                            <>
+                                                <div className={`text-4xl font-bold tabular-nums font-display ${isTaxDue ? "text-amber-600" : "text-[var(--color-deduce-teal)]"}`}>
+                                                    {formatCurrency(mainAmount)} <span className="text-xl text-slate-400 font-medium">MXN</span>
+                                                </div>
+                                                <div className={`text-xs font-semibold tracking-wide uppercase mt-1 ${isTaxDue ? "text-amber-600" : "text-emerald-600"}`}>
+                                                    {hasRetentionProjection
+                                                        ? (isTaxDue ? "Saldo a cargo proyectado" : "Saldo a favor proyectado")
+                                                        : "Ahorro fiscal por deducciones"}
+                                                </div>
+                                                {hasRetentionProjection && summary?.deductions_tax_savings !== undefined && (
+                                                    <div className="text-xs text-slate-500 font-medium mt-1 tabular-nums">
+                                                        Ahorro por tus deducciones: <span className="font-semibold text-[var(--color-deduce-navy)]">{formatCurrency(summary.deductions_tax_savings)}</span>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             </div>
 
@@ -284,7 +302,8 @@ export default function DashboardPage() {
                             {summary?.category_details && summary.category_details.filter(c => !c.is_independent).length > 0 ? (
                                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                                     {summary.category_details.filter(c => !c.is_independent).map((catDetail, idx) => {
-                                        const ui = categoryConfigs.find(c => c.id === catDetail.category) || { id: "otro", label: "OTROS", icon: Info, color: "text-slate-700", bg: "bg-slate-100", border: "border-slate-300", bar: "bg-slate-300" };
+                                        const normalizedCat = catDetail.category === "Gastos de funerales." ? "Gastos funerales." : catDetail.category;
+                                        const ui = categoryConfigs.find(c => c.id === normalizedCat) || { id: "otro", label: "OTROS", icon: Info, color: "text-slate-700", bg: "bg-slate-100", border: "border-slate-300", bar: "bg-slate-300" };
                                         const percent = catDetail.percentage ?? 0;
                                         const isCloseToLimit = percent >= 85 && percent < 100;
                                         const isOverLimit = percent >= 100;
@@ -322,42 +341,82 @@ export default function DashboardPage() {
 
                         {summary?.category_details && summary.category_details.filter(c => c.is_independent).length > 0 && (
                             <div className="space-y-4 overflow-hidden">
-                                <h2 className="text-lg font-bold text-[var(--color-deduce-navy)] font-display">Topes Independientes (Colegiaturas)</h2>
+                                <h2 className="text-lg font-bold text-[var(--color-deduce-navy)] font-display">Topes Independientes (Colegiaturas por Alumno)</h2>
                                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                                    {summary.category_details.filter(c => c.is_independent).map((cat) => {
+                                    {summary.category_details.filter(c => c.is_independent).map((cat, idx) => {
                                         const percent = cat.percentage ?? 0;
                                         const isOverLimit = percent >= 100;
                                         const isCloseToLimit = percent >= 85 && percent < 100;
                                         const limitUi = {
-                                            safe: { bg: "bg-white", border: "border-slate-200", color: "text-[var(--color-deduce-navy)]", iconBg: "bg-[var(--color-deduce-peach)]/20" },
-                                            warning: { bg: "bg-orange-50/50", border: "border-orange-300", color: "text-orange-700", iconBg: "bg-orange-200" },
-                                            over: { bg: "bg-red-50/50", border: "border-red-300", color: "text-red-700", iconBg: "bg-red-200" }
+                                            safe: { bg: "bg-white", border: "border-slate-200", color: "text-[var(--color-deduce-navy)]", iconBg: "bg-[var(--color-deduce-peach)]/20", bar: "bg-[var(--color-deduce-teal)]" },
+                                            warning: { bg: "bg-orange-50/50", border: "border-orange-300", color: "text-orange-700", iconBg: "bg-orange-200", bar: "bg-orange-500" },
+                                            over: { bg: "bg-red-50/50", border: "border-red-300", color: "text-red-700", iconBg: "bg-red-200", bar: "bg-red-500" }
                                         };
                                         const ui = isOverLimit ? limitUi.over : isCloseToLimit ? limitUi.warning : limitUi.safe;
                                         const Icon = GraduationCap;
-                                        
+                                        const isMissingCurp = cat.student_curp === "Sin CURP";
+                                        const hasMultiLevel = Boolean(cat.breakdown && cat.breakdown.length > 1);
+
                                         return (
-                                            <div key={cat.category} className={`snap-start shrink-0 w-72 rounded-xl p-5 border shadow-sm transition-all relative overflow-hidden ${ui.bg} ${ui.border}`}>
-                                                <div className="flex items-center justify-between mb-4">
-                                                    <div className={`p-2 rounded-lg ${ui.iconBg}`}>
-                                                        <Icon className={`w-5 h-5 ${ui.color}`} />
+                                            <div key={`${cat.category}-${cat.student_curp ?? idx}`} className={`snap-start shrink-0 w-80 rounded-xl p-5 border shadow-sm transition-all relative overflow-hidden flex flex-col justify-between ${ui.bg} ${ui.border}`}>
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <div className={`p-2 rounded-lg ${ui.iconBg}`}>
+                                                            <Icon className={`w-5 h-5 ${ui.color}`} />
+                                                        </div>
+                                                        <div className={`px-2.5 py-1 rounded-full text-xs font-bold ${ui.iconBg} ${ui.color}`}>
+                                                            {cat.percentage !== null && cat.percentage !== undefined ? `${percent.toFixed(0)}%` : "Sin tope"}
+                                                        </div>
                                                     </div>
-                                                    <div className={`px-2.5 py-1 rounded-full text-xs font-bold ${ui.iconBg} ${ui.color}`}>
-                                                        {percent.toFixed(0)}%
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1 relative z-10">
-                                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider truncate" title={cat.category}>
-                                                        {cat.category}
-                                                    </h3>
-                                                    <p className={`text-2xl font-black tabular-nums tracking-tight ${ui.color}`}>
-                                                        {formatCurrency(cat.amount)}
-                                                    </p>
-                                                    <div className="flex items-center gap-1.5 pt-1">
-                                                        <p className="text-xs text-slate-500 font-medium">
-                                                            {cat.limit ? `Tope: ${formatCurrency(cat.limit)}` : "Sin tope específico"}
+                                                    <div className="space-y-1.5 relative z-10">
+                                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider line-clamp-2" title={cat.category}>
+                                                            {cat.category}
+                                                        </h3>
+                                                        {cat.student_curp && (
+                                                            <div>
+                                                                <span className={`inline-block font-mono text-[11px] font-semibold px-2 py-0.5 rounded ${isMissingCurp ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
+                                                                    {isMissingCurp ? "CURP pendiente" : `Alumno: ${cat.student_curp}`}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <p className={`text-2xl font-black tabular-nums tracking-tight pt-0.5 ${ui.color}`}>
+                                                            {formatCurrency(cat.amount)}
                                                         </p>
                                                     </div>
+                                                    {cat.limit !== null && cat.limit > 0 && (
+                                                        <div className="mt-3 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                            <div className={`h-full ${ui.bar}`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
+                                                        </div>
+                                                    )}
+                                                    {hasMultiLevel && cat.breakdown && (
+                                                        <div className="flex flex-wrap gap-1.5 pt-3">
+                                                            {cat.breakdown.map((item) => (
+                                                                <span
+                                                                    key={item.label}
+                                                                    className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium tabular-nums"
+                                                                >
+                                                                    {item.label}: {formatCurrency(item.amount)}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="pt-3 mt-3 border-t border-slate-100">
+                                                    <p className="text-xs text-slate-500 font-medium">
+                                                        {cat.limit !== null && cat.limit > 0
+                                                            ? `${hasMultiLevel ? "Tope aplicable" : "Tope"}: ${formatCurrency(cat.limit)}`
+                                                            : "Sin tope específico"}
+                                                    </p>
+                                                    {cat.limit !== null && cat.limit > 0 && cat.amount > cat.limit && (
+                                                        <p className="text-[11px] text-red-600 font-semibold mt-0.5">
+                                                            Deducible máximo: {formatCurrency(cat.limit)}
+                                                        </p>
+                                                    )}
+                                                    {cat.limit_note && (
+                                                        <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                                                            {cat.limit_note}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                         );

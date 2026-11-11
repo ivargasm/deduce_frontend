@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuthStore } from "@/app/store/Store";
 import { useRouter } from "next/navigation";
-import { Users, FileText, Settings2, ShieldAlert } from "lucide-react";
+import { Users, FileText, Settings2, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,7 +16,10 @@ import {
     fetchAdminTaxBracketsApi,
     createAdminTaxBracketApi,
     updateAdminTaxBracketApi,
-    updateAdminDeductionLimitApi
+    createAdminDeductionLimitApi,
+    seedAdminDeductionLimitsApi,
+    updateAdminDeductionLimitApi,
+    deleteAdminDeductionLimitApi
 } from "@/app/lib/api/admin";
 
 // Schemas locales basados en lo que envía el backend
@@ -66,6 +69,13 @@ export default function AdminPanel() {
     const [selectedYear, setSelectedYear] = useState<number | "">("");
     const [newYearValue, setNewYearValue] = useState<string>("");
     const [newUmaValue, setNewUmaValue] = useState<string>("");
+    const [newLimitCategory, setNewLimitCategory] = useState<string>("");
+    const [newLimitType, setNewLimitType] = useState<string>("independiente");
+    const [newLimitPercentage, setNewLimitPercentage] = useState<string>("");
+    const [newLimitFixedAmount, setNewLimitFixedAmount] = useState<string>("");
+    const [newLimitGlobalCap, setNewLimitGlobalCap] = useState<boolean>(false);
+    const [isSeedingLimits, setIsSeedingLimits] = useState(false);
+    const [isCreatingLimit, setIsCreatingLimit] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
@@ -148,7 +158,7 @@ export default function AdminPanel() {
         }
     };
 
-    const updateDeductionLimit = async (limitId: number, field: string, value: number) => {
+    const updateDeductionLimit = async (limitId: number, field: string, value: number | boolean | null) => {
         try {
             await updateAdminDeductionLimitApi(url, limitId, { [field]: value });
             toast.success("Límite actualizado");
@@ -156,6 +166,67 @@ export default function AdminPanel() {
         } catch (error) {
             console.error(error);
             toast.error("Error actualizando límite");
+        }
+    };
+
+    const handleCreateDeductionLimit = async () => {
+        const categoria = newLimitCategory.trim();
+        if (!categoria) {
+            toast.error("Ingresa el nombre de la categoría");
+            return;
+        }
+        const montoFijo = newLimitFixedAmount !== "" ? Number(newLimitFixedAmount) : null;
+        const porcentaje = newLimitPercentage !== "" ? Number(newLimitPercentage) / 100 : null;
+        if (montoFijo === null && porcentaje === null) {
+            toast.error("Ingresa al menos un porcentaje o un monto fijo");
+            return;
+        }
+        setIsCreatingLimit(true);
+        try {
+            await createAdminDeductionLimitApi(url, {
+                categoria,
+                tipo_limite: newLimitType,
+                monto_fijo: montoFijo,
+                porcentaje,
+                cuenta_para_tope_global: newLimitGlobalCap,
+            });
+            toast.success(`Límite "${categoria}" agregado`);
+            setNewLimitCategory("");
+            setNewLimitPercentage("");
+            setNewLimitFixedAmount("");
+            setNewLimitType("independiente");
+            setNewLimitGlobalCap(false);
+            fetchData();
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : "Error al crear límite");
+        } finally {
+            setIsCreatingLimit(false);
+        }
+    };
+
+    const handleSeedDeductionLimits = async () => {
+        setIsSeedingLimits(true);
+        try {
+            const seeded = await seedAdminDeductionLimitsApi(url);
+            setLimits(seeded);
+            toast.success("Límites oficiales del SAT cargados correctamente");
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : "Error al cargar límites oficiales del SAT");
+        } finally {
+            setIsSeedingLimits(false);
+        }
+    };
+
+    const handleDeleteDeductionLimit = async (limitId: number, categoria: string) => {
+        try {
+            await deleteAdminDeductionLimitApi(url, limitId);
+            toast.success(`Límite "${categoria}" eliminado`);
+            fetchData();
+        } catch (error) {
+            console.error(error);
+            toast.error("Error al eliminar límite");
         }
     };
 
@@ -459,10 +530,10 @@ export default function AdminPanel() {
                                                         <input
                                                             type="number"
                                                             step="0.01"
-                                                            defaultValue={(tb.tax_rate * 100).toFixed(2)}
+                                                            defaultValue={tb.tax_rate}
                                                             onBlur={(e) => {
-                                                                const val = Number(e.target.value) / 100;
-                                                                if (val !== tb.tax_rate) handleUpdateTaxBracket(tb.id, "tax_rate", val);
+                                                                const val = Number(e.target.value);
+                                                                if (!Number.isNaN(val) && val !== tb.tax_rate) handleUpdateTaxBracket(tb.id, "tax_rate", val);
                                                             }}
                                                             className="border border-slate-200 rounded-md p-1 w-20 text-sm"
                                                         /> %
@@ -500,10 +571,24 @@ export default function AdminPanel() {
                 {activeTab === "limits" && (
                     <div className="space-y-6">
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="p-4 border-b border-slate-200 bg-slate-50">
-                                <h2 className="font-semibold text-slate-700">Límites de Deducción por Categoría</h2>
+                            <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h2 className="font-semibold text-slate-700">Límites de Deducción por Categoría</h2>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Las colegiaturas deben tener Tope Global en &quot;No&quot; para calcularse como topes independientes.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSeedDeductionLimits}
+                                    disabled={isSeedingLimits}
+                                    className="inline-flex items-center gap-2 px-3 py-2 bg-[var(--color-deduce-teal)] text-white text-xs font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer"
+                                >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    {isSeedingLimits ? "Cargando..." : "Cargar límites oficiales SAT"}
+                                </button>
                             </div>
-                            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                            <div className="overflow-x-auto max-h-[540px] overflow-y-auto">
                                 <table className="w-full text-sm text-left">
                                     <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 shadow-sm">
                                         <tr>
@@ -512,11 +597,15 @@ export default function AdminPanel() {
                                             <th className="px-6 py-3 font-semibold">Porcentaje</th>
                                             <th className="px-6 py-3 font-semibold">Monto Fijo</th>
                                             <th className="px-6 py-3 font-semibold">Tope Global</th>
+                                            <th className="px-6 py-3 font-semibold text-right">Acción</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {limits.map((l) => (
-                                            <tr key={l.categoria} className="border-b border-slate-100 hover:bg-slate-50/50">
+                                            <tr
+                                                key={`${l.id}-${l.porcentaje ?? 'none'}-${l.monto_fijo ?? 'none'}-${l.cuenta_para_tope_global}`}
+                                                className="border-b border-slate-100 hover:bg-slate-50/50"
+                                            >
                                                 <td className="px-6 py-4 font-medium text-slate-900">{l.categoria}</td>
                                                 <td className="px-6 py-4 text-slate-500">
                                                     <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
@@ -527,11 +616,11 @@ export default function AdminPanel() {
                                                     <input
                                                         type="number"
                                                         step="0.01"
-                                                        defaultValue={l.porcentaje !== null ? (l.porcentaje * 100).toFixed(0) : ''}
+                                                        defaultValue={l.porcentaje !== null ? Number((l.porcentaje * 100).toFixed(2)) : ''}
                                                         onBlur={(e) => {
-                                                            const val = e.target.value ? Number(e.target.value) / 100 : null;
+                                                            const val = e.target.value !== "" ? Number(e.target.value) / 100 : null;
                                                             if (val !== l.porcentaje) {
-                                                                updateDeductionLimit(l.id, "porcentaje", val as number);
+                                                                updateDeductionLimit(l.id, "porcentaje", val);
                                                             }
                                                         }}
                                                         className="border border-slate-200 rounded-md p-1 w-20"
@@ -544,9 +633,9 @@ export default function AdminPanel() {
                                                         step="0.01"
                                                         defaultValue={l.monto_fijo !== null ? l.monto_fijo : ''}
                                                         onBlur={(e) => {
-                                                            const val = e.target.value ? Number(e.target.value) : null;
+                                                            const val = e.target.value !== "" ? Number(e.target.value) : null;
                                                             if (val !== l.monto_fijo) {
-                                                                updateDeductionLimit(l.id, "monto_fijo", val as number);
+                                                                updateDeductionLimit(l.id, "monto_fijo", val);
                                                             }
                                                         }}
                                                         className="border border-slate-200 rounded-md p-1 w-28"
@@ -554,17 +643,110 @@ export default function AdminPanel() {
                                                     />
                                                 </td>
                                                 <td className="px-6 py-4 text-slate-500">
-                                                    {l.cuenta_para_tope_global ? 'Sí' : 'No'}
+                                                    <select
+                                                        value={l.cuenta_para_tope_global ? "true" : "false"}
+                                                        onChange={(e) => updateDeductionLimit(l.id, "cuenta_para_tope_global", e.target.value === "true")}
+                                                        className="border border-slate-200 rounded-md p-1 bg-white text-sm"
+                                                    >
+                                                        <option value="true">Sí</option>
+                                                        <option value="false">No</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteDeductionLimit(l.id, l.categoria)}
+                                                        className="inline-flex items-center justify-center p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
+                                                        title={`Eliminar ${l.categoria}`}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}
                                         {limits.length === 0 && (
                                             <tr>
-                                                <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
-                                                    No hay límites configurados.
+                                                <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                                                    No hay límites configurados. Usa &quot;Cargar límites oficiales SAT&quot; o agrega uno manualmente abajo.
                                                 </td>
                                             </tr>
                                         )}
+                                        {/* Row to add new Deduction Limit */}
+                                        <tr className="bg-slate-50 border-t border-slate-200">
+                                            <td className="px-6 py-4">
+                                                <input
+                                                    type="text"
+                                                    list="sat-limit-categories"
+                                                    placeholder="Ej. Secundaria"
+                                                    className="border border-slate-200 rounded-md p-1.5 w-44 text-sm bg-white"
+                                                    value={newLimitCategory}
+                                                    onChange={(e) => setNewLimitCategory(e.target.value)}
+                                                />
+                                                <datalist id="sat-limit-categories">
+                                                    <option value="Preescolar" />
+                                                    <option value="Primaria" />
+                                                    <option value="Secundaria" />
+                                                    <option value="Profesional técnico" />
+                                                    <option value="Bachillerato o su equivalente" />
+                                                    <option value="Donativos" />
+                                                </datalist>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <select
+                                                    className="border border-slate-200 rounded-md p-1.5 text-sm bg-white"
+                                                    value={newLimitType}
+                                                    onChange={(e) => {
+                                                        const tipo = e.target.value;
+                                                        setNewLimitType(tipo);
+                                                        setNewLimitGlobalCap(tipo !== "independiente");
+                                                    }}
+                                                >
+                                                    <option value="independiente">Independiente (Colegiaturas)</option>
+                                                    <option value="porcentaje_ingreso_anterior">% Ingreso Anterior</option>
+                                                    <option value="global">Global</option>
+                                                </select>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-500">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    placeholder="Ej. 7"
+                                                    className="border border-slate-200 rounded-md p-1.5 w-20 text-sm bg-white"
+                                                    value={newLimitPercentage}
+                                                    onChange={(e) => setNewLimitPercentage(e.target.value)}
+                                                /> %
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-500">
+                                                $ <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    placeholder="Ej. 19900"
+                                                    className="border border-slate-200 rounded-md p-1.5 w-28 text-sm bg-white"
+                                                    value={newLimitFixedAmount}
+                                                    onChange={(e) => setNewLimitFixedAmount(e.target.value)}
+                                                />
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <select
+                                                    className="border border-slate-200 rounded-md p-1.5 text-sm bg-white"
+                                                    value={newLimitGlobalCap ? "true" : "false"}
+                                                    onChange={(e) => setNewLimitGlobalCap(e.target.value === "true")}
+                                                >
+                                                    <option value="false">No</option>
+                                                    <option value="true">Sí</option>
+                                                </select>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCreateDeductionLimit}
+                                                    disabled={isCreatingLimit}
+                                                    className="px-3 py-1.5 bg-[var(--color-deduce-teal)] text-white text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                                                >
+                                                    {isCreatingLimit ? "Agregando..." : "Agregar Límite"}
+                                                </button>
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>

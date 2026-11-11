@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import { useAuthStore } from './Store';
 import { fetchProfileApi, updateProfileApi } from '../lib/api/profiles';
-import { fetchInvoicesApi, fetchSummaryApi, deleteInvoiceApi, updateInvoiceApi } from '../lib/api/invoices';
+import {
+    fetchInvoicesApi,
+    fetchSummaryApi,
+    deleteInvoiceApi,
+    updateInvoiceApi,
+    fetchIssuerRulesApi,
+    updateIssuerRuleApi,
+    deleteIssuerRuleApi,
+} from '../lib/api/invoices';
 
 export interface Invoice {
     id: number;
@@ -10,11 +18,13 @@ export interface Invoice {
     issuer_name: string;
     total_amount: number;
     deductible_amount: number;
+    taxable_amount?: number | null;
     cfdi_use: string;
     payment_method: string;
     expense_type: string | null;
     status: string;
     warning_messages: string[] | null;
+    invoice_type?: string;
     date: string;
     created_at: string;
     student_curp?: string | null;
@@ -25,6 +35,31 @@ export interface InvoiceUpdateData {
     cfdi_use?: string;
     student_curp?: string;
     educational_level?: string;
+    apply_to_similar?: boolean;
+    remember_for_issuer?: boolean;
+    match_keyword?: string;
+}
+
+export interface InvoiceUpdateResult extends Invoice {
+    updated_similar_count?: number;
+    rule_saved?: boolean;
+}
+
+export interface UserIssuerRule {
+    id: number;
+    issuer_rfc: string;
+    issuer_name?: string | null;
+    cfdi_use: string;
+    student_curp?: string | null;
+    educational_level?: string | null;
+    match_keyword?: string | null;
+    auto_apply: boolean;
+}
+
+export interface CategorySummaryBreakdown {
+    label: string;
+    amount: number;
+    limit?: number | null;
 }
 
 export interface CategorySummary {
@@ -33,6 +68,9 @@ export interface CategorySummary {
     limit: number | null;
     percentage: number | null;
     is_independent: boolean;
+    student_curp?: string | null;
+    breakdown?: CategorySummaryBreakdown[] | null;
+    limit_note?: string | null;
 }
 
 export interface InvoiceSummary {
@@ -46,7 +84,9 @@ export interface InvoiceSummary {
     by_category: Record<string, number>;
     category_details: CategorySummary[];
     simulated_refund: number;
+    deductions_tax_savings?: number;
     exact_income?: number;
+    exact_taxable_income?: number;
     exact_retention?: number;
 }
 
@@ -63,6 +103,7 @@ export interface UserProfile {
 
 interface DeductionsState {
     invoices: Invoice[];
+    issuerRules: UserIssuerRule[];
     summary: InvoiceSummary | null;
     profile: UserProfile | null;
     isUploading: boolean;
@@ -75,12 +116,16 @@ interface DeductionsState {
     updateProfile: (data: Partial<UserProfile>) => Promise<void>;
     fetchInvoices: () => Promise<void>;
     fetchSummary: () => Promise<void>;
+    fetchIssuerRules: () => Promise<void>;
+    updateIssuerRule: (id: number, data: { student_curp?: string; educational_level?: string; match_keyword?: string; auto_apply?: boolean }) => Promise<void>;
+    deleteIssuerRule: (id: number) => Promise<void>;
     deleteInvoice: (id: number) => Promise<void>;
-    updateInvoice: (id: number, data: InvoiceUpdateData) => Promise<void>;
+    updateInvoice: (id: number, data: InvoiceUpdateData) => Promise<InvoiceUpdateResult>;
 }
 
 export const useDeductionsStore = create<DeductionsState>((set, get) => ({
     invoices: [],
+    issuerRules: [],
     summary: null,
     profile: null,
     isUploading: false,
@@ -152,12 +197,38 @@ export const useDeductionsStore = create<DeductionsState>((set, get) => ({
         }
     },
 
+    fetchIssuerRules: async () => {
+        try {
+            const url = useAuthStore.getState().url;
+            const data = await fetchIssuerRulesApi(url);
+            set({ issuerRules: data });
+        } catch (error) {
+            console.error('Error fetching issuer rules', error);
+        }
+    },
+
+    updateIssuerRule: async (id, data) => {
+        const url = useAuthStore.getState().url;
+        await updateIssuerRuleApi(url, id, data);
+        await get().fetchIssuerRules();
+    },
+
+    deleteIssuerRule: async (id) => {
+        const url = useAuthStore.getState().url;
+        await deleteIssuerRuleApi(url, id);
+        await get().fetchIssuerRules();
+    },
+
     updateInvoice: async (id: number, data: InvoiceUpdateData) => {
         const url = useAuthStore.getState().url;
         try {
-            await updateInvoiceApi(url, id, data);
+            const result: InvoiceUpdateResult = await updateInvoiceApi(url, id, data);
             await get().fetchInvoices();
             await get().fetchSummary();
+            if (result?.rule_saved) {
+                await get().fetchIssuerRules();
+            }
+            return result;
         } catch (error) {
             console.error(error);
             throw error;
