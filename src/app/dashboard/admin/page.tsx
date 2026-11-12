@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuthStore } from "@/app/store/Store";
 import { useRouter } from "next/navigation";
-import { Users, FileText, Settings2, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
+import { Users, FileText, Settings2, ShieldAlert, Sparkles, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,9 +13,12 @@ import {
     updateAdminUserSubscriptionApi,
     updateAdminFiscalYearApi,
     createAdminFiscalYearApi,
+    deleteAdminFiscalYearApi,
     fetchAdminTaxBracketsApi,
     createAdminTaxBracketApi,
+    copyAdminTaxBracketsApi,
     updateAdminTaxBracketApi,
+    deleteAdminTaxBracketApi,
     createAdminDeductionLimitApi,
     seedAdminDeductionLimitsApi,
     updateAdminDeductionLimitApi,
@@ -67,6 +70,9 @@ export default function AdminPanel() {
 
     const [searchEmail, setSearchEmail] = useState("");
     const [selectedYear, setSelectedYear] = useState<number | "">("");
+    const [copySourceYear, setCopySourceYear] = useState<number | "">("");
+    const [copyBracketsOnCreate, setCopyBracketsOnCreate] = useState<boolean>(true);
+    const [isCopyingBrackets, setIsCopyingBrackets] = useState<boolean>(false);
     const [newYearValue, setNewYearValue] = useState<string>("");
     const [newUmaValue, setNewUmaValue] = useState<string>("");
     const [newLimitCategory, setNewLimitCategory] = useState<string>("");
@@ -147,15 +153,91 @@ export default function AdminPanel() {
 
     const handleCreateFiscalYear = async () => {
         if (!newYearValue || !newUmaValue) return toast.error("Ingresa el año y el valor UMA");
+        const targetYr = Number(newYearValue);
+        const otherYears = fiscalYears.map(f => f.year).filter(y => y !== targetYr);
+        const prevSourceYr =
+            copyBracketsOnCreate && otherYears.length > 0
+                ? Math.max(...otherYears.filter(y => y < targetYr), ...otherYears)
+                : null;
         try {
-            await createAdminFiscalYearApi(url, Number(newYearValue), Number(newUmaValue));
-            toast.success("Año fiscal creado exitosamente");
+            await createAdminFiscalYearApi(url, targetYr, Number(newUmaValue), prevSourceYr);
+            toast.success(
+                prevSourceYr
+                    ? `Año fiscal ${targetYr} creado y tabla ISR copiada de ${prevSourceYr}`
+                    : `Año fiscal ${targetYr} creado exitosamente`
+            );
             setNewYearValue("");
             setNewUmaValue("");
+            setSelectedYear(targetYr);
+            fetchData();
+            fetchAdminTaxBracketsApi(url, targetYr).then(setTaxBrackets);
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : "Error al crear año fiscal (¿ya existe?)");
+        }
+    };
+
+    const handleDeleteFiscalYear = async (yearToDelete: number) => {
+        if (!window.confirm(`¿Eliminar el año fiscal ${yearToDelete} y todos sus rangos de ISR?`)) return;
+        try {
+            await deleteAdminFiscalYearApi(url, yearToDelete);
+            toast.success(`Año fiscal ${yearToDelete} eliminado`);
+            if (selectedYear === yearToDelete) {
+                const remaining = fiscalYears.filter(f => f.year !== yearToDelete);
+                setSelectedYear(remaining.length > 0 ? Math.max(...remaining.map(f => f.year)) : "");
+            }
             fetchData();
         } catch (error) {
             console.error(error);
-            toast.error("Error al crear año fiscal (¿ya existe?)");
+            toast.error(error instanceof Error ? error.message : "Error al eliminar año fiscal");
+        }
+    };
+
+    const handleCopyTaxBrackets = async (sourceYr?: number) => {
+        if (!selectedYear) return;
+        const targetYr = Number(selectedYear);
+        const candidates = fiscalYears.map(f => f.year).filter(y => y !== targetYr);
+        const effectiveSource =
+            sourceYr ||
+            (copySourceYear !== "" && Number(copySourceYear) !== targetYr ? Number(copySourceYear) : null) ||
+            (candidates.length > 0 ? Math.max(...candidates.filter(y => y < targetYr), ...candidates) : null);
+
+        if (!effectiveSource) {
+            toast.error("Selecciona un año origen válido para copiar la tabla ISR.");
+            return;
+        }
+
+        const shouldOverwrite = taxBrackets.length > 0;
+        if (shouldOverwrite) {
+            const ok = window.confirm(
+                `El año ${targetYr} ya tiene ${taxBrackets.length} rangos. ¿Deseas reemplazarlos con la tabla de ${effectiveSource}?`
+            );
+            if (!ok) return;
+        }
+
+        setIsCopyingBrackets(true);
+        try {
+            const copied = await copyAdminTaxBracketsApi(url, effectiveSource, targetYr, shouldOverwrite);
+            setTaxBrackets(copied);
+            toast.success(`Se copiaron ${copied.length} rangos de ISR de ${effectiveSource} a ${targetYr}.`);
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : "Error al copiar la tabla de ISR");
+        } finally {
+            setIsCopyingBrackets(false);
+        }
+    };
+
+    const handleDeleteTaxBracket = async (bracketId: number) => {
+        try {
+            await deleteAdminTaxBracketApi(url, bracketId);
+            toast.success("Rango eliminado");
+            if (selectedYear) {
+                fetchAdminTaxBracketsApi(url, Number(selectedYear)).then(setTaxBrackets);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : "Error al eliminar rango");
         }
     };
 
@@ -411,8 +493,20 @@ export default function AdminPanel() {
                                                         className="border border-slate-200 rounded-md p-1 w-32"
                                                     />
                                                 </td>
-                                                <td className="px-6 py-4 text-right text-xs text-slate-400">
-                                                    *Se actualiza al salir del campo
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="inline-flex items-center gap-3">
+                                                        <span className="text-xs text-slate-400">
+                                                            *Se actualiza al salir del campo
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteFiscalYear(fy.year)}
+                                                            title={`Eliminar año ${fy.year}`}
+                                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -429,7 +523,7 @@ export default function AdminPanel() {
                                                 <input
                                                     type="number"
                                                     placeholder="Ej. 2027"
-                                                    className="border border-slate-200 rounded-md p-1 w-24 text-sm"
+                                                    className="border border-slate-200 rounded-md p-1 w-24 text-sm bg-white"
                                                     value={newYearValue}
                                                     onChange={e => setNewYearValue(e.target.value)}
                                                 />
@@ -438,18 +532,31 @@ export default function AdminPanel() {
                                                 <input
                                                     type="number"
                                                     placeholder="Valor UMA"
-                                                    className="border border-slate-200 rounded-md p-1 w-32 text-sm"
+                                                    className="border border-slate-200 rounded-md p-1 w-32 text-sm bg-white"
                                                     value={newUmaValue}
                                                     onChange={e => setNewUmaValue(e.target.value)}
                                                 />
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <button
-                                                    onClick={handleCreateFiscalYear}
-                                                    className="px-3 py-1 bg-[var(--color-deduce-teal)] text-white text-xs font-medium rounded-md hover:opacity-90"
-                                                >
-                                                    Agregar Año
-                                                </button>
+                                                <div className="inline-flex flex-wrap items-center justify-end gap-3">
+                                                    {fiscalYears.length > 0 && (
+                                                        <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={copyBracketsOnCreate}
+                                                                onChange={e => setCopyBracketsOnCreate(e.target.checked)}
+                                                                className="rounded border-slate-300"
+                                                            />
+                                                            Copiar ISR del año anterior
+                                                        </label>
+                                                    )}
+                                                    <button
+                                                        onClick={handleCreateFiscalYear}
+                                                        className="px-3 py-1.5 bg-[var(--color-deduce-teal)] text-white text-xs font-medium rounded-md hover:opacity-90 cursor-pointer"
+                                                    >
+                                                        Agregar Año
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -459,20 +566,57 @@ export default function AdminPanel() {
 
                         {/* ISR BRACKETS SECTION */}
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                            <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
                                 <h2 className="font-semibold text-slate-700">Tablas ISR Anual</h2>
-                                <div className="flex items-center gap-2">
-                                    <label className="text-sm text-slate-500 font-medium">Año Fiscal:</label>
-                                    <select
-                                        className="border border-slate-200 rounded-md text-sm p-1 bg-white"
-                                        value={selectedYear}
-                                        onChange={e => setSelectedYear(e.target.value ? Number(e.target.value) : "")}
-                                    >
-                                        <option value="">-- Seleccionar --</option>
-                                        {fiscalYears.map(fy => (
-                                            <option key={fy.year} value={fy.year}>{fy.year}</option>
-                                        ))}
-                                    </select>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {selectedYear !== "" && fiscalYears.filter(f => f.year !== Number(selectedYear)).length > 0 && (
+                                        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1">
+                                            <span className="text-xs text-slate-500">Copiar desde:</span>
+                                            <select
+                                                className="text-xs font-medium text-slate-700 bg-transparent focus:outline-none"
+                                                value={
+                                                    copySourceYear !== "" && Number(copySourceYear) !== Number(selectedYear)
+                                                        ? copySourceYear
+                                                        : Math.max(
+                                                              ...fiscalYears
+                                                                  .map(f => f.year)
+                                                                  .filter(y => y !== Number(selectedYear))
+                                                          )
+                                                }
+                                                onChange={e => setCopySourceYear(Number(e.target.value))}
+                                            >
+                                                {fiscalYears
+                                                    .filter(fy => fy.year !== Number(selectedYear))
+                                                    .map(fy => (
+                                                        <option key={fy.year} value={fy.year}>
+                                                            {fy.year}
+                                                        </option>
+                                                    ))}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                disabled={isCopyingBrackets}
+                                                onClick={() => handleCopyTaxBrackets()}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--color-deduce-teal)] text-white text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                                            >
+                                                <Copy className="w-3 h-3" />
+                                                {isCopyingBrackets ? "Copiando..." : `Copiar a ${selectedYear}`}
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-sm text-slate-500 font-medium">Año Fiscal:</label>
+                                        <select
+                                            className="border border-slate-200 rounded-md text-sm p-1 bg-white"
+                                            value={selectedYear}
+                                            onChange={e => setSelectedYear(e.target.value ? Number(e.target.value) : "")}
+                                        >
+                                            <option value="">-- Seleccionar --</option>
+                                            {fiscalYears.map(fy => (
+                                                <option key={fy.year} value={fy.year}>{fy.year}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
@@ -485,6 +629,7 @@ export default function AdminPanel() {
                                                 <th className="px-6 py-3 font-semibold">Límite Superior</th>
                                                 <th className="px-6 py-3 font-semibold">Cuota Fija</th>
                                                 <th className="px-6 py-3 font-semibold">Porcentaje (%)</th>
+                                                <th className="px-6 py-3 font-semibold text-right">Acción</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -539,12 +684,35 @@ export default function AdminPanel() {
                                                             className="border border-slate-200 rounded-md p-1 w-20 text-sm"
                                                         /> %
                                                     </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteTaxBracket(tb.id)}
+                                                            title="Eliminar rango"
+                                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             ))}
                                             {taxBrackets.length === 0 && (
                                                 <tr>
-                                                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
-                                                        No hay rangos configurados para este año.
+                                                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                                                        <div className="space-y-2">
+                                                            <p>No hay rangos configurados para este año.</p>
+                                                            {fiscalYears.filter(f => f.year !== Number(selectedYear)).length > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isCopyingBrackets}
+                                                                    onClick={() => handleCopyTaxBrackets()}
+                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-deduce-teal)] text-white text-xs font-medium rounded-md hover:opacity-90 cursor-pointer"
+                                                                >
+                                                                    <Copy className="w-3.5 h-3.5" />
+                                                                    Copiar tabla del año anterior a {selectedYear}
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             )}

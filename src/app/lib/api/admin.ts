@@ -48,14 +48,57 @@ export const updateAdminFiscalYearApi = async (url: string, year: number, newVal
     return res.json();
 };
 
-export const createAdminFiscalYearApi = async (url: string, year: number, uma_annual_value: number) => {
+export const createAdminFiscalYearApi = async (
+    url: string,
+    year: number,
+    uma_annual_value: number,
+    copy_brackets_from_year?: number | null
+) => {
     const res = await fetch(`${url}/api/admin/fiscal-years`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year, uma_annual_value })
+        body: JSON.stringify({
+            year,
+            uma_annual_value,
+            copy_brackets_from_year: copy_brackets_from_year ?? null,
+        })
     });
-    if (!res.ok) throw new Error('Error al crear año fiscal');
+    if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'Error al crear año fiscal');
+    }
+    return res.json();
+};
+
+export const deleteAdminFiscalYearApi = async (url: string, year: number) => {
+    const res = await fetch(`${url}/api/admin/fiscal-years/${year}`, {
+        method: "DELETE",
+        credentials: "include"
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'Error al eliminar año fiscal');
+    }
+    return res.json();
+};
+
+export const copyAdminTaxBracketsApi = async (
+    url: string,
+    source_year: number,
+    target_year: number,
+    overwrite = false
+) => {
+    const res = await fetch(`${url}/api/admin/tax-brackets/copy`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_year, target_year, overwrite })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'Error al copiar tabla ISR');
+    }
     return res.json();
 };
 
@@ -90,6 +133,18 @@ export const updateAdminTaxBracketApi = async (url: string, bracketId: number, d
         body: JSON.stringify(data)
     });
     if (!res.ok) throw new Error('Error al actualizar rango de ISR');
+    return res.json();
+};
+
+export const deleteAdminTaxBracketApi = async (url: string, bracketId: number) => {
+    const res = await fetch(`${url}/api/admin/tax-brackets/${bracketId}`, {
+        method: "DELETE",
+        credentials: "include"
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'Error al eliminar rango de ISR');
+    }
     return res.json();
 };
 
