@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import JSZip from 'jszip';
 import { useDeductionsStore } from '@/app/store/DeductionsStore';
 import { useAuthStore } from '@/app/store/Store';
 import {
@@ -17,7 +19,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, CloudUpload, FileType } from 'lucide-react';
+import { AlertTriangle, CloudUpload, FileType, Crown, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface UploadZoneProps {
@@ -28,6 +30,24 @@ interface UploadZoneProps {
 interface PendingPayrollConflict {
     file: File;
     conflict: PayrollConflictDetail;
+}
+
+interface QuotaExceededModalData {
+    isOpen: boolean;
+    filesCount: number;
+    currentCount: number;
+    monthlyLimit: number;
+    omittedCount: number;
+}
+
+interface QuotaPartialModalData {
+    isOpen: boolean;
+    filesToUpload: File[];
+    availableQuota: number;
+    currentCount: number;
+    monthlyLimit: number;
+    omittedPayments: number;
+    omittedS01: number;
 }
 
 const formatCurrency = (val: number) =>
@@ -49,12 +69,33 @@ const formatDateTime = (iso: string | null) => {
     }
 };
 
+const DEDUCTIBLE_KEYWORDS_HINTS = [
+    // Medico / Salud
+    'medico', 'médico', 'consulta', 'hospital', 'dental', 'dentista', 'laboratorio', 'psicolog',
+    'nutriolog', 'lentes', 'oftalmol', 'farmacia', 'medicamento', 'clinico', 'clínico', 'analisis',
+    'análisis', 'radiografia', 'radiografía', 'ultrasonido', 'honorarios medicos',
+    // Educativo / Colegiaturas
+    'colegiatura', 'inscripcion', 'inscripción', 'reinscripcion', 'reinscripción', 'mensualidad',
+    'primaria', 'secundaria', 'preescolar', 'kinder', 'maternal', 'bachillerato', 'preparatoria',
+    'colegio', 'instituto', 'ensenanza', 'enseñanza', 'educacion', 'educación',
+    // Funerales
+    'funeraria', 'funerario', 'inhumacion', 'inhumación', 'cremacion', 'cremación', 'ataud', 'ataúd', 'velatorio', 'sepelio',
+    // Retiro
+    'afore', 'retiro', 'ppr', 'pension', 'pensión',
+    // Seguros
+    'poliza', 'póliza', 'gastos medicos', 'gastos médicos',
+];
+
 export default function UploadZone({ compact = false, children }: UploadZoneProps) {
+    const router = useRouter();
     const [dragActive, setDragActive] = useState(false);
     const [pendingConflicts, setPendingConflicts] = useState<PendingPayrollConflict[]>([]);
     const [resolvingConflict, setResolvingConflict] = useState(false);
+    const [omitNonDeductibleS01, setOmitNonDeductibleS01] = useState(true);
+    const [quotaExceededModal, setQuotaExceededModal] = useState<QuotaExceededModalData | null>(null);
+    const [quotaPartialModal, setQuotaPartialModal] = useState<QuotaPartialModalData | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-    const { isUploading, setUploading, fetchInvoices, fetchSummary } = useDeductionsStore();
+    const { isUploading, setUploading, fetchInvoices, fetchSummary, summary, profile } = useDeductionsStore();
     const url = useAuthStore(state => state.url);
 
     const activeConflictItem = pendingConflicts[0] ?? null;
@@ -69,21 +110,19 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
         }
     };
 
-    const processFiles = async (files: FileList | null) => {
-        if (!files || files.length === 0) return;
-
-        const xmlFiles = Array.from(files).filter(file => file.name.toLowerCase().endsWith('.xml'));
-
-        if (xmlFiles.length === 0) {
-            toast.error('Solo se permiten archivos XML.');
-            return;
-        }
-
+    const executeUpload = async (
+        files: File[],
+        omittedPayments: number,
+        omittedS01: number,
+        skippedBecauseOfQuota: number = 0
+    ) => {
         setUploading(true);
         let successCount = 0;
+        let duplicateCount = 0;
+        let quotaExceededDuringUpload = false;
         const detectedConflicts: PendingPayrollConflict[] = [];
 
-        for (const file of xmlFiles) {
+        for (const file of files) {
             const formData = new FormData();
             formData.append('file', file);
 
@@ -96,19 +135,58 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
                     continue;
                 }
                 const errorMessage = error instanceof Error ? error.message : 'Error desconocido al procesar la factura';
-                toast.error(`Error en ${file.name}: ${errorMessage}`);
-                
-                // Break loop if the user hit their plan limit to avoid spamming errors
-                if (errorMessage.includes("límite mensual")) {
+
+                // Si el backend detectó complemento de pago
+                if (errorMessage.includes('complemento para recepción de pagos') || errorMessage.includes('CP01')) {
+                    omittedPayments++;
+                    continue;
+                }
+
+                // Si la factura ya fue subida anteriormente (duplicado)
+                if (errorMessage.includes('ya fue subida anteriormente')) {
+                    duplicateCount++;
+                    continue;
+                }
+
+                // Si alcanzó el límite del plan mensual (402)
+                if (errorMessage.includes('límite mensual')) {
+                    quotaExceededDuringUpload = true;
                     break;
                 }
+
+                toast.error(`Error en ${file.name}: ${errorMessage}`);
             }
         }
 
         if (successCount > 0) {
-            toast.success(`Se procesaron ${successCount} facturas correctamente.`);
+            toast.success(`Se procesaron ${successCount} factura${successCount > 1 ? 's' : ''} correctamente.`);
             await fetchInvoices();
             await fetchSummary();
+        }
+
+        if (duplicateCount > 0) {
+            toast.info(
+                `${duplicateCount} factura${duplicateCount > 1 ? 's' : ''} ya estaba${duplicateCount > 1 ? 'n' : ''} registrada${duplicateCount > 1 ? 's' : ''} previamente en tu cuenta.`
+            );
+        }
+
+        if (quotaExceededDuringUpload) {
+            toast.error('Se detuvo la carga al alcanzar el límite mensual de tu Plan Free. Mejora a Premium para subir facturas ilimitadas.');
+        }
+
+        if (skippedBecauseOfQuota > 0) {
+            toast.warning(`Se omitieron ${skippedBecauseOfQuota} factura${skippedBecauseOfQuota > 1 ? 's' : ''} que excedían el límite disponible de tu Plan Free.`);
+        }
+
+        if (omittedPayments > 0 || omittedS01 > 0) {
+            const reasons: string[] = [];
+            if (omittedPayments > 0) {
+                reasons.push(`${omittedPayments} complemento${omittedPayments > 1 ? 's' : ''} de pago (CP01)`);
+            }
+            if (omittedS01 > 0) {
+                reasons.push(`${omittedS01} factura${omittedS01 > 1 ? 's' : ''} S01 sin deducciones personales`);
+            }
+            toast.info(`Se omitieron automáticamente ${reasons.join(' y ')} sin consumir tu cuota mensual.`);
         }
 
         if (detectedConflicts.length > 0) {
@@ -119,6 +197,149 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
         if (inputRef.current) {
             inputRef.current.value = '';
         }
+    };
+
+    const processFiles = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+
+        setUploading(true);
+
+        // 1. Extraer archivos XML directos y descomprimir archivos .ZIP
+        const rawFiles = Array.from(files);
+        const xmlFiles: File[] = [];
+
+        for (const f of rawFiles) {
+            const lowerName = f.name.toLowerCase();
+            if (lowerName.endsWith('.xml')) {
+                xmlFiles.push(f);
+            } else if (lowerName.endsWith('.zip')) {
+                try {
+                    const zip = await JSZip.loadAsync(f);
+                    const entries = Object.keys(zip.files);
+                    for (const entryName of entries) {
+                        const entry = zip.files[entryName];
+                        if (entry.dir || entryName.startsWith('__MACOSX') || entryName.includes('/.')) {
+                            continue;
+                        }
+                        if (entryName.toLowerCase().endsWith('.xml')) {
+                            const blob = await entry.async('blob');
+                            const cleanName = entryName.split('/').pop() || entryName;
+                            xmlFiles.push(new File([blob], cleanName, { type: 'text/xml' }));
+                        }
+                    }
+                } catch (zipErr) {
+                    console.error('Error desempacando archivo ZIP:', zipErr);
+                    toast.error(`No se pudo leer el archivo ZIP ${f.name}`);
+                }
+            }
+        }
+
+        if (xmlFiles.length === 0) {
+            toast.error('No se encontraron archivos XML (.xml o .zip del SAT).');
+            setUploading(false);
+            if (inputRef.current) inputRef.current.value = '';
+            return;
+        }
+
+        // 2. Pre-filtrado inteligente de complementos de pago (CP01) y facturas S01 sin indicios deducibles
+        let omittedPaymentsCount = 0;
+        let omittedS01Count = 0;
+        const filesToUpload: File[] = [];
+
+        for (const file of xmlFiles) {
+            let xmlText = '';
+            try {
+                xmlText = await file.text();
+            } catch {
+                filesToUpload.push(file);
+                continue;
+            }
+
+            // Omitir complementos para recepción de pagos (Tipo P o CP01)
+            const isPagoComplement =
+                /TipoDeComprobante\s*=\s*["']P["']/i.test(xmlText) ||
+                /UsoCFDI\s*=\s*["']CP01["']/i.test(xmlText);
+            if (isPagoComplement) {
+                omittedPaymentsCount++;
+                continue;
+            }
+
+            // Si está activo el filtro de omitir S01
+            if (omitNonDeductibleS01) {
+                const isS01 = /UsoCFDI\s*=\s*["']S01["']/i.test(xmlText);
+                if (isS01) {
+                    const lowerText = xmlText.toLowerCase();
+                    const hasDeductibleHint = DEDUCTIBLE_KEYWORDS_HINTS.some(kw => lowerText.includes(kw));
+                    if (!hasDeductibleHint) {
+                        omittedS01Count++;
+                        continue;
+                    }
+                }
+            }
+
+            // Facturas G03 NUNCA se omiten (siempre se analizan para detectar posibles deducciones mal clasificadas)
+            filesToUpload.push(file);
+        }
+
+        // Si todos los archivos fueron omitidos por los filtros inteligentes
+        if (filesToUpload.length === 0) {
+            setUploading(false);
+            if (omittedPaymentsCount > 0 || omittedS01Count > 0) {
+                const reasons: string[] = [];
+                if (omittedPaymentsCount > 0) {
+                    reasons.push(`${omittedPaymentsCount} complemento${omittedPaymentsCount > 1 ? 's' : ''} de pago (CP01)`);
+                }
+                if (omittedS01Count > 0) {
+                    reasons.push(`${omittedS01Count} factura${omittedS01Count > 1 ? 's' : ''} S01 sin deducciones personales`);
+                }
+                toast.info(`Se omitieron automáticamente ${reasons.join(' y ')} sin consumir tu cuota mensual.`);
+            } else {
+                toast.warning('No se encontraron facturas válidas para subir.');
+            }
+            if (inputRef.current) inputRef.current.value = '';
+            return;
+        }
+
+        // 3. Validación de Cuota y Plan Free vs Premium
+        const isPremium = profile?.subscription_status === 'premium' || summary?.monthly_invoices_limit === -1;
+        const monthlyLimit = summary?.monthly_invoices_limit && summary.monthly_invoices_limit > 0
+            ? summary.monthly_invoices_limit
+            : 30;
+        const currentCount = summary?.monthly_invoices_count ?? 0;
+        const availableQuota = isPremium ? Infinity : Math.max(0, monthlyLimit - currentCount);
+
+        // Caso A: La cuota mensual ya está totalmente agotada
+        if (!isPremium && availableQuota <= 0) {
+            setUploading(false);
+            if (inputRef.current) inputRef.current.value = '';
+            setQuotaExceededModal({
+                isOpen: true,
+                filesCount: filesToUpload.length,
+                currentCount,
+                monthlyLimit,
+                omittedCount: omittedPaymentsCount + omittedS01Count,
+            });
+            return;
+        }
+
+        // Caso B: El archivo trae más facturas válidas que la cuota disponible restante
+        if (!isPremium && filesToUpload.length > availableQuota) {
+            setUploading(false);
+            if (inputRef.current) inputRef.current.value = '';
+            setQuotaPartialModal({
+                isOpen: true,
+                filesToUpload,
+                availableQuota,
+                currentCount,
+                monthlyLimit,
+                omittedPayments: omittedPaymentsCount,
+                omittedS01: omittedS01Count,
+            });
+            return;
+        }
+
+        // Caso C: Dentro de cuota o usuario Premium
+        await executeUpload(filesToUpload, omittedPaymentsCount, omittedS01Count, 0);
     };
 
     const handleResolveConflict = async (action: 'replace' | 'keep_both' | 'discard') => {
@@ -173,9 +394,9 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
     };
 
     return (
-        <div className="w-full h-full">
+        <div className="w-full h-full flex flex-col justify-between gap-3">
             <div
-                className={children ? `relative w-full h-full cursor-pointer group ${dragActive ? 'bg-primary/5 rounded-xl border-2 border-primary border-dashed' : ''}` : `relative flex flex-col items-center justify-center w-full ${compact ? 'py-4 min-h-32' : 'h-64'} border-2 border-dashed rounded-lg transition-colors duration-200 ease-in-out cursor-pointer ${compact ? 'border-transparent bg-transparent hover:border-slate-600' : (dragActive ? 'border-primary bg-primary/10' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-gray-500 dark:hover:bg-gray-700')}`}
+                className={children ? `relative w-full flex-1 flex flex-col cursor-pointer group ${dragActive ? 'bg-primary/5 rounded-xl border-2 border-primary border-dashed' : ''}` : `relative flex flex-col items-center justify-center w-full ${compact ? 'py-4 min-h-32' : 'h-64'} border-2 border-dashed rounded-lg transition-colors duration-200 ease-in-out cursor-pointer ${compact ? 'border-transparent bg-transparent hover:border-slate-600' : (dragActive ? 'border-primary bg-primary/10' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-gray-500 dark:hover:bg-gray-700')}`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
@@ -183,7 +404,7 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
                 onClick={() => inputRef.current?.click()}
             >
                 {children ? (
-                    <div className="pointer-events-none">
+                    <div className="w-full h-full flex flex-col flex-1 pointer-events-none">
                         {isUploading ? (
                             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm rounded-xl">
                                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
@@ -205,7 +426,7 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
                                 <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
                                     <span className="font-semibold">{isUploading ? 'Procesando XMLs...' : 'Haz clic para subir o arrastra los archivos aquí'}</span>
                                 </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Solo archivos XML (CFDI 4.0)</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Archivos XML (CFDI 4.0) o archivos .ZIP del SAT</p>
                             </>
                         )}
                     </div>
@@ -214,11 +435,42 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
                     ref={inputRef}
                     type="file"
                     className="hidden"
-                    accept=".xml"
+                    accept=".xml,.zip"
                     multiple
                     onChange={handleChange}
                     disabled={isUploading}
                 />
+            </div>
+
+            {/* Panel de Filtro Inteligente Informativo */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl text-xs space-y-2 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2.5 font-semibold text-slate-800 dark:text-slate-200 cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={omitNonDeductibleS01}
+                            onChange={(e) => setOmitNonDeductibleS01(e.target.checked)}
+                            className="rounded border-slate-300 text-[var(--color-deduce-teal)] focus:ring-[var(--color-deduce-teal)] w-4 h-4 cursor-pointer"
+                        />
+                        <span>Omitir facturas S01 sin efectos fiscales (recomendado)</span>
+                    </label>
+                    {profile?.subscription_status !== 'premium' && summary?.monthly_invoices_limit && (
+                        <span className="text-[11px] font-medium text-slate-500 bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded-full tabular-nums">
+                            Cuota: {summary.monthly_invoices_count || 0} / {summary.monthly_invoices_limit} facturas
+                        </span>
+                    )}
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
+                    {omitNonDeductibleS01 ? (
+                        <>
+                            <span className="font-semibold text-emerald-700 dark:text-emerald-400">Filtro inteligente activo:</span> Se omitirán complementos de pago (CP01) y facturas S01 sin conceptos deducibles para ahorrar tu cuota mensual. Las facturas <b>G03</b> y cualquier gasto con palabras clave de salud o colegiaturas <b>siempre se procesarán</b> para que puedas pedir su corrección al emisor.
+                        </>
+                    ) : (
+                        <>
+                            <span className="font-semibold text-amber-700 dark:text-amber-400">Filtro desactivado:</span> Se procesarán absolutamente todas las facturas XML que subas, consumiendo tu cuota mensual.
+                        </>
+                    )}
+                </p>
             </div>
 
             {/* Sección Educativa */}
@@ -414,6 +666,196 @@ export default function UploadZone({ compact = false, children }: UploadZoneProp
                             onClick={() => handleResolveConflict('replace')}
                         >
                             Reemplazar el anterior
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal: Límite Excedido (0 cuota disponible) */}
+            <Dialog
+                open={!!quotaExceededModal?.isOpen}
+                onOpenChange={(open) => {
+                    if (!open) setQuotaExceededModal(null);
+                }}
+            >
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center text-amber-600 dark:text-amber-400 flex-shrink-0">
+                                <AlertTriangle className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-base text-slate-900 dark:text-slate-100">
+                                    Límite mensual alcanzado
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-slate-500">
+                                    Plan Free ({quotaExceededModal?.currentCount || 0} / {quotaExceededModal?.monthlyLimit || 30} facturas procesadas este mes)
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="space-y-3 text-sm py-2">
+                        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-xl text-amber-900 dark:text-amber-200 text-xs leading-relaxed space-y-1.5">
+                            <p className="font-semibold text-amber-950 dark:text-amber-100">
+                                Has consumido tu cuota mensual de {quotaExceededModal?.monthlyLimit || 30} facturas.
+                            </p>
+                            <p>
+                                Detectamos <b>{quotaExceededModal?.filesCount} facturas válidas</b> en tu archivo que no pueden cargarse en este momento sin actualizar tu plan.
+                            </p>
+                            {(quotaExceededModal?.omittedCount ?? 0) > 0 && (
+                                <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                                    (Adicionalmente se omitieron {quotaExceededModal?.omittedCount} comprobantes o complementos no deducibles).
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl text-xs space-y-1.5 text-slate-600 dark:text-slate-400">
+                            <p className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <Crown className="w-4 h-4 text-amber-500" />
+                                ¿Qué obtienes con el Plan Premium?
+                            </p>
+                            <ul className="list-disc list-inside space-y-1 pl-1 text-[11px]">
+                                <li>Subida de <b>facturas XML ilimitadas</b></li>
+                                <li>Lectura automática de <b>Recibos de Nómina</b> y <b>Constancias de Retención</b></li>
+                                <li>Simulador y desglose de saldo a favor ISR en tiempo real</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setQuotaExceededModal(null)}
+                        >
+                            Cerrar
+                        </Button>
+                        <Button
+                            type="button"
+                            className="bg-[var(--color-deduce-teal)] hover:bg-[var(--color-deduce-teal)]/90 text-white font-medium flex items-center gap-1.5"
+                            onClick={() => {
+                                setQuotaExceededModal(null);
+                                router.push('/dashboard/billing');
+                            }}
+                        >
+                            <Crown className="w-4 h-4" />
+                            Mejorar a Plan Premium
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal: Archivo supera cuota restante (ej. 50 facturas en zip y 5 disponibles) */}
+            <Dialog
+                open={!!quotaPartialModal?.isOpen}
+                onOpenChange={(open) => {
+                    if (!open) setQuotaPartialModal(null);
+                }}
+            >
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/50 flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
+                                <Zap className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-base text-slate-900 dark:text-slate-100">
+                                    Límite de facturas en archivo ZIP
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-slate-500">
+                                    Tu archivo contiene más facturas que tu cuota disponible este mes
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="space-y-3 text-sm py-2">
+                        <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1 text-xs">
+                            <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                                <span>Facturas válidas detectadas en ZIP:</span>
+                                <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                                    {quotaPartialModal?.filesToUpload.length} facturas
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                                <span>Cuota disponible en tu Plan Free:</span>
+                                <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                                    {quotaPartialModal?.availableQuota} factura{(quotaPartialModal?.availableQuota ?? 0) > 1 ? 's' : ''}
+                                </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60 dark:border-slate-800">
+                                Has utilizado {quotaPartialModal?.currentCount} de {quotaPartialModal?.monthlyLimit} facturas permitidas este mes.
+                            </div>
+                        </div>
+
+                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                            ¿Cómo deseas procesar tu archivo?
+                        </p>
+
+                        <div className="grid gap-2.5">
+                            {/* Opción 1: Premium (Recomendado) */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setQuotaPartialModal(null);
+                                    router.push('/dashboard/billing');
+                                }}
+                                className="w-full text-left p-3.5 rounded-xl border-2 border-emerald-500/50 hover:border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 transition-all flex items-start gap-3 group cursor-pointer"
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                                    <Crown className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-semibold text-xs text-slate-900 dark:text-slate-100">
+                                            👑 Mejorar a Plan Premium (Recomendado)
+                                        </span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full">
+                                            Sin límites
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                                        Carga las <b>{quotaPartialModal?.filesToUpload.length} facturas completas</b> de tu ZIP de inmediato sin esperas ni límites mensuales.
+                                    </p>
+                                </div>
+                            </button>
+
+                            {/* Opción 2: Subir solo las permitidas */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (!quotaPartialModal) return;
+                                    const modalData = quotaPartialModal;
+                                    setQuotaPartialModal(null);
+                                    const partialFiles = modalData.filesToUpload.slice(0, modalData.availableQuota);
+                                    const skipped = modalData.filesToUpload.length - modalData.availableQuota;
+                                    executeUpload(partialFiles, modalData.omittedPayments, modalData.omittedS01, skipped);
+                                }}
+                                className="w-full text-left p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 transition-all flex items-start gap-3 group cursor-pointer"
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <Zap className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1">
+                                    <span className="font-semibold text-xs text-slate-800 dark:text-slate-200">
+                                        Subir solo las primeras {quotaPartialModal?.availableQuota} facturas disponibles
+                                    </span>
+                                    <p className="text-[11px] text-slate-500 mt-1">
+                                        Se agotará tu cuota de este mes. Las restantes <b>{((quotaPartialModal?.filesToUpload.length ?? 0) - (quotaPartialModal?.availableQuota ?? 0))} facturas se omitirán</b>.
+                                    </p>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setQuotaPartialModal(null)}
+                        >
+                            Cancelar carga
                         </Button>
                     </DialogFooter>
                 </DialogContent>

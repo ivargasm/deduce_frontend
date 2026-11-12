@@ -94,6 +94,10 @@ export interface InvoiceSummary {
     exact_income?: number;
     exact_taxable_income?: number;
     exact_retention?: number;
+    marginal_tax_rate?: number | null;
+    remaining_global_cap?: number | null;
+    remaining_d06_cap?: number | null;
+    potential_additional_savings?: number | null;
 }
 
 export interface UserProfile {

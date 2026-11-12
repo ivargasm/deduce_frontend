@@ -6,7 +6,7 @@ import { useDeductionsStore } from '@/app/store/DeductionsStore';
 import UploadZone from '@/components/UploadZone';
 import InvoicesTable from '@/components/InvoicesTable';
 import { Card } from "@/components/ui/card";
-import { Info, UploadCloud, Building2, Stethoscope, GraduationCap, HeartHandshake, ShieldPlus, User, Download, Loader2, Bus, PiggyBank, Archive, Accessibility, Wallet, AlertTriangle, Send } from 'lucide-react';
+import { Info, UploadCloud, Building2, Stethoscope, GraduationCap, HeartHandshake, ShieldPlus, User, Download, Loader2, Bus, PiggyBank, Archive, Accessibility, Wallet, AlertTriangle, Send, Sparkles } from 'lucide-react';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/app/store/Store';
 import { exportInvoicesApi, sendAccountantReportApi } from '@/app/lib/api/invoices';
@@ -207,8 +207,8 @@ export default function DashboardPage() {
                         </div>
                     )}
                     {/* Top Grid: Limit and Upload */}
-                    <section className="grid lg:grid-cols-[1.5fr_1fr] gap-6 mb-8 items-start">
-                        <Card className="p-8 border border-slate-200 shadow-sm rounded-xl bg-white flex flex-col gap-6">
+                    <section className="grid lg:grid-cols-[1.5fr_1fr] gap-6 mb-8 items-stretch">
+                        <Card className="p-8 border border-slate-200 shadow-sm rounded-xl bg-white flex flex-col justify-between gap-6">
                             <div className="flex justify-between items-start">
                                 <div className="space-y-1">
                                     <div className="flex items-center gap-2">
@@ -279,11 +279,27 @@ export default function DashboardPage() {
                                         </div>
                                     </div>
                                 )}
+
+                                {summary && (summary.potential_additional_savings ?? 0) > 0 && (
+                                    <div className="mt-6 p-4 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-transparent border border-emerald-500/30 rounded-xl flex items-start gap-3 text-[var(--color-deduce-navy)]">
+                                        <Sparkles className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="font-bold text-sm text-emerald-800 dark:text-emerald-300">
+                                                Oportunidad de ahorro fiscal (Tasa marginal: {summary.marginal_tax_rate?.toFixed(2)}%)
+                                            </p>
+                                            <p className="text-xs mt-1 text-slate-600 leading-relaxed">
+                                                Aún tienes <span className="font-semibold text-slate-900">{formatCurrency((summary.remaining_global_cap || 0) + (summary.remaining_d06_cap || 0))}</span> de capacidad deducible disponible este año ({summary.remaining_global_cap ? `${formatCurrency(summary.remaining_global_cap)} en tope global` : ''}{summary.remaining_global_cap && summary.remaining_d06_cap ? ' y ' : ''}{summary.remaining_d06_cap ? `${formatCurrency(summary.remaining_d06_cap)} en retiro` : ''}).
+                                                Si los aprovechas antes del 31 de diciembre, podrías recuperar hasta{' '}
+                                                <span className="font-bold text-emerald-700">{formatCurrency(summary.potential_additional_savings || 0)} adicionales</span> en tu declaración anual.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </Card>
 
                         <UploadZone compact={true}>
-                            <Card className="p-8 border border-slate-700 shadow-lg rounded-xl bg-[var(--color-deduce-navy)] text-white relative overflow-hidden flex flex-col justify-center items-center text-center h-full hover:border-slate-500 transition-colors">
+                            <Card className="p-8 border border-slate-700 shadow-lg rounded-xl bg-[var(--color-deduce-navy)] text-white relative overflow-hidden flex flex-col justify-center items-center text-center flex-1 h-full min-h-[220px] hover:border-slate-500 transition-colors">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-deduce-teal)]/20 blur-3xl rounded-full"></div>
                                 <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-4 relative z-10 border border-slate-700">
                                     <UploadCloud className="w-8 h-8 text-[var(--color-deduce-teal)]" />
@@ -341,7 +357,7 @@ export default function DashboardPage() {
 
                         {summary?.category_details && summary.category_details.filter(c => c.is_independent).length > 0 && (
                             <div className="space-y-4 overflow-hidden">
-                                <h2 className="text-lg font-bold text-[var(--color-deduce-navy)] font-display">Topes Independientes (Colegiaturas por Alumno)</h2>
+                                <h2 className="text-lg font-bold text-[var(--color-deduce-navy)] font-display">Topes Independientes (Colegiaturas y Retiro)</h2>
                                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                                     {summary.category_details.filter(c => c.is_independent).map((cat, idx) => {
                                         const percent = cat.percentage ?? 0;
@@ -353,7 +369,8 @@ export default function DashboardPage() {
                                             over: { bg: "bg-red-50/50", border: "border-red-300", color: "text-red-700", iconBg: "bg-red-200", bar: "bg-red-500" }
                                         };
                                         const ui = isOverLimit ? limitUi.over : isCloseToLimit ? limitUi.warning : limitUi.safe;
-                                        const Icon = GraduationCap;
+                                        const isRetirement = cat.category.toLowerCase().includes("retiro") || cat.category.toLowerCase().includes("sar");
+                                        const Icon = isRetirement ? PiggyBank : GraduationCap;
                                         const isMissingCurp = cat.student_curp === "Sin CURP";
                                         const hasMultiLevel = Boolean(cat.breakdown && cat.breakdown.length > 1);
 
@@ -372,10 +389,17 @@ export default function DashboardPage() {
                                                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider line-clamp-2" title={cat.category}>
                                                             {cat.category}
                                                         </h3>
-                                                        {cat.student_curp && (
+                                                        {cat.student_curp && !isRetirement && (
                                                             <div>
                                                                 <span className={`inline-block font-mono text-[11px] font-semibold px-2 py-0.5 rounded ${isMissingCurp ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
                                                                     {isMissingCurp ? "CURP pendiente" : `Alumno: ${cat.student_curp}`}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {isRetirement && (
+                                                            <div>
+                                                                <span className="inline-block font-sans text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                                                                    PPR / Aportaciones SAR
                                                                 </span>
                                                             </div>
                                                         )}

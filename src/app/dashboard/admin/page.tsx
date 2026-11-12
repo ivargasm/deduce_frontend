@@ -260,7 +260,7 @@ export default function AdminPanel() {
         }
         const montoFijo = newLimitFixedAmount !== "" ? Number(newLimitFixedAmount) : null;
         const porcentaje = newLimitPercentage !== "" ? Number(newLimitPercentage) / 100 : null;
-        if (montoFijo === null && porcentaje === null) {
+        if (montoFijo === null && porcentaje === null && newLimitType !== "uma_anual") {
             toast.error("Ingresa al menos un porcentaje o un monto fijo");
             return;
         }
@@ -770,69 +770,102 @@ export default function AdminPanel() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {limits.map((l) => (
-                                            <tr
-                                                key={`${l.id}-${l.porcentaje ?? 'none'}-${l.monto_fijo ?? 'none'}-${l.cuenta_para_tope_global}`}
-                                                className="border-b border-slate-100 hover:bg-slate-50/50"
-                                            >
-                                                <td className="px-6 py-4 font-medium text-slate-900">{l.categoria}</td>
-                                                <td className="px-6 py-4 text-slate-500">
-                                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
-                                                        {l.tipo_limite.replace(/_/g, ' ').toUpperCase()}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-500">
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        defaultValue={l.porcentaje !== null ? Number((l.porcentaje * 100).toFixed(2)) : ''}
-                                                        onBlur={(e) => {
-                                                            const val = e.target.value !== "" ? Number(e.target.value) / 100 : null;
-                                                            if (val !== l.porcentaje) {
-                                                                updateDeductionLimit(l.id, "porcentaje", val);
-                                                            }
-                                                        }}
-                                                        className="border border-slate-200 rounded-md p-1 w-20"
-                                                        placeholder="-"
-                                                    /> %
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-500">
-                                                    $ <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        defaultValue={l.monto_fijo !== null ? l.monto_fijo : ''}
-                                                        onBlur={(e) => {
-                                                            const val = e.target.value !== "" ? Number(e.target.value) : null;
-                                                            if (val !== l.monto_fijo) {
-                                                                updateDeductionLimit(l.id, "monto_fijo", val);
-                                                            }
-                                                        }}
-                                                        className="border border-slate-200 rounded-md p-1 w-28"
-                                                        placeholder="-"
-                                                    />
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-500">
-                                                    <select
-                                                        value={l.cuenta_para_tope_global ? "true" : "false"}
-                                                        onChange={(e) => updateDeductionLimit(l.id, "cuenta_para_tope_global", e.target.value === "true")}
-                                                        className="border border-slate-200 rounded-md p-1 bg-white text-sm"
-                                                    >
-                                                        <option value="true">Sí</option>
-                                                        <option value="false">No</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDeleteDeductionLimit(l.id, l.categoria)}
-                                                        className="inline-flex items-center justify-center p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
-                                                        title={`Eliminar ${l.categoria}`}
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {limits.map((l) => {
+                                            const isUmaLimit = l.tipo_limite === "uma_anual";
+                                            const isRetirement = l.categoria.toLowerCase().includes("retiro") || l.categoria.toLowerCase().includes("sar");
+
+                                            return (
+                                                <tr
+                                                    key={`${l.id}-${l.porcentaje ?? 'none'}-${l.monto_fijo ?? 'none'}-${l.cuenta_para_tope_global}`}
+                                                    className="border-b border-slate-100 hover:bg-slate-50/50"
+                                                >
+                                                    <td className="px-6 py-4 font-medium text-slate-900">{l.categoria}</td>
+                                                    <td className="px-6 py-4 text-slate-500">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                                            isUmaLimit
+                                                                ? "bg-purple-100 text-purple-800"
+                                                                : isRetirement
+                                                                ? "bg-amber-100 text-amber-800"
+                                                                : l.tipo_limite === "independiente"
+                                                                ? "bg-teal-100 text-teal-800"
+                                                                : l.tipo_limite === "porcentaje_ingreso_anterior"
+                                                                ? "bg-blue-100 text-blue-800"
+                                                                : "bg-slate-100 text-slate-700"
+                                                        }`}>
+                                                            {l.tipo_limite.replace(/_/g, ' ').toUpperCase()}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-500">
+                                                        {isUmaLimit ? (
+                                                            <span className="text-xs text-slate-400 font-medium">N/A</span>
+                                                        ) : (
+                                                            <>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    defaultValue={l.porcentaje !== null ? Number((l.porcentaje * 100).toFixed(2)) : ''}
+                                                                    onBlur={(e) => {
+                                                                        const val = e.target.value !== "" ? Number(e.target.value) / 100 : null;
+                                                                        if (val !== l.porcentaje) {
+                                                                            updateDeductionLimit(l.id, "porcentaje", val);
+                                                                        }
+                                                                    }}
+                                                                    className="border border-slate-200 rounded-md p-1 w-20"
+                                                                    placeholder="-"
+                                                                /> %
+                                                            </>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-500">
+                                                        {isUmaLimit ? (
+                                                            <span className="text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-md" title="1 UMA anual del ejercicio vigente">
+                                                                1 UMA Anual (dinámico)
+                                                            </span>
+                                                        ) : isRetirement ? (
+                                                            <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md" title="Tope máximo de 5 UMA anuales establecido en el Art. 151 LISR Fracc. V">
+                                                                Menor entre 10% y 5 UMA
+                                                            </span>
+                                                        ) : (
+                                                            <>
+                                                                $ <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    defaultValue={l.monto_fijo !== null ? l.monto_fijo : ''}
+                                                                    onBlur={(e) => {
+                                                                        const val = e.target.value !== "" ? Number(e.target.value) : null;
+                                                                        if (val !== l.monto_fijo) {
+                                                                            updateDeductionLimit(l.id, "monto_fijo", val);
+                                                                        }
+                                                                    }}
+                                                                    className="border border-slate-200 rounded-md p-1 w-28"
+                                                                    placeholder="-"
+                                                                />
+                                                            </>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-500">
+                                                        <select
+                                                            value={l.cuenta_para_tope_global ? "true" : "false"}
+                                                            onChange={(e) => updateDeductionLimit(l.id, "cuenta_para_tope_global", e.target.value === "true")}
+                                                            className="border border-slate-200 rounded-md p-1 bg-white text-sm"
+                                                        >
+                                                            <option value="true">Sí</option>
+                                                            <option value="false">No</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteDeductionLimit(l.id, l.categoria)}
+                                                            className="inline-flex items-center justify-center p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
+                                                            title={`Eliminar ${l.categoria}`}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                         {limits.length === 0 && (
                                             <tr>
                                                 <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
@@ -846,10 +879,21 @@ export default function AdminPanel() {
                                                 <input
                                                     type="text"
                                                     list="sat-limit-categories"
-                                                    placeholder="Ej. Secundaria"
-                                                    className="border border-slate-200 rounded-md p-1.5 w-44 text-sm bg-white"
+                                                    placeholder="Ej. Secundaria o Gastos funerales"
+                                                    className="border border-slate-200 rounded-md p-1.5 w-52 text-sm bg-white"
                                                     value={newLimitCategory}
-                                                    onChange={(e) => setNewLimitCategory(e.target.value)}
+                                                    onChange={(e) => {
+                                                        const cat = e.target.value;
+                                                        setNewLimitCategory(cat);
+                                                        if (cat.toLowerCase().includes("funeral")) {
+                                                            setNewLimitType("uma_anual");
+                                                            setNewLimitGlobalCap(true);
+                                                        } else if (cat.toLowerCase().includes("retiro") || cat.toLowerCase().includes("sar")) {
+                                                            setNewLimitType("independiente");
+                                                            setNewLimitPercentage("10");
+                                                            setNewLimitGlobalCap(false);
+                                                        }
+                                                    }}
                                                 />
                                                 <datalist id="sat-limit-categories">
                                                     <option value="Preescolar" />
@@ -858,6 +902,8 @@ export default function AdminPanel() {
                                                     <option value="Profesional técnico" />
                                                     <option value="Bachillerato o su equivalente" />
                                                     <option value="Donativos" />
+                                                    <option value="Aportaciones voluntarias (planes de retiro)" />
+                                                    <option value="Gastos funerales" />
                                                 </datalist>
                                             </td>
                                             <td className="px-6 py-4">
@@ -870,9 +916,10 @@ export default function AdminPanel() {
                                                         setNewLimitGlobalCap(tipo !== "independiente");
                                                     }}
                                                 >
-                                                    <option value="independiente">Independiente (Colegiaturas)</option>
-                                                    <option value="porcentaje_ingreso_anterior">% Ingreso Anterior</option>
-                                                    <option value="global">Global</option>
+                                                    <option value="independiente">Independiente (Colegiaturas / Retiro)</option>
+                                                    <option value="uma_anual">1 UMA Anual (Gastos funerales)</option>
+                                                    <option value="porcentaje_ingreso_anterior">% Ingreso Anterior (Donativos)</option>
+                                                    <option value="global">Global (Tope 15% o 5 UMA)</option>
                                                 </select>
                                             </td>
                                             <td className="px-6 py-4 text-slate-500">
@@ -880,7 +927,8 @@ export default function AdminPanel() {
                                                     type="number"
                                                     step="0.01"
                                                     placeholder="Ej. 7"
-                                                    className="border border-slate-200 rounded-md p-1.5 w-20 text-sm bg-white"
+                                                    disabled={newLimitType === "uma_anual"}
+                                                    className="border border-slate-200 rounded-md p-1.5 w-20 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                     value={newLimitPercentage}
                                                     onChange={(e) => setNewLimitPercentage(e.target.value)}
                                                 /> %
@@ -889,8 +937,9 @@ export default function AdminPanel() {
                                                 $ <input
                                                     type="number"
                                                     step="0.01"
-                                                    placeholder="Ej. 19900"
-                                                    className="border border-slate-200 rounded-md p-1.5 w-28 text-sm bg-white"
+                                                    placeholder={newLimitType === "uma_anual" ? "Dinámico" : "Ej. 19900"}
+                                                    disabled={newLimitType === "uma_anual"}
+                                                    className="border border-slate-200 rounded-md p-1.5 w-28 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                     value={newLimitFixedAmount}
                                                     onChange={(e) => setNewLimitFixedAmount(e.target.value)}
                                                 />
