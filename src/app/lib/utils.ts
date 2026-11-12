@@ -41,3 +41,15 @@ export function formatDateToLocal(dateString: string | undefined | null): string
         return "Fecha inválida";
     }
 }
+
+/**
+ * Valida que un parámetro de redirección sea una ruta interna relativa segura.
+ */
+export function getSafeRedirectPath(rawRedirect: string | null | undefined, fallback = "/dashboard"): string {
+    if (!rawRedirect) return fallback;
+    const trimmed = rawRedirect.trim();
+    if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("\\")) {
+        return fallback;
+    }
+    return trimmed;
+}

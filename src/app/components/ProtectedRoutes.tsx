@@ -1,35 +1,44 @@
 "use client";
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "../store/Store";
 import SessionWatcher from "./SessionWatcher";
 import Loader from "./Loader";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const router = useRouter();
-    const { userAuth, userValid, isLoading } = useAuthStore();
+    const pathname = usePathname();
+    const { user, userAuth, userValid, isLoading } = useAuthStore();
 
     useEffect(() => {
-        const checkAuth = async () => {
-            await userValid();
-            const { userAuth, user } = useAuthStore.getState();
-            if (!userAuth) {
-                router.push("/auth/login");
-            } else if (window.location.pathname.startsWith("/dashboard/admin") && user?.role !== 'admin') {
-                router.push("/dashboard");
-            }
-        };
-        checkAuth();
-    }, [router, userValid]);
+        userValid();
+    }, [userValid]);
+
+    useEffect(() => {
+        if (isLoading) return;
+        if (!userAuth) {
+            router.replace("/auth/login");
+        } else if (pathname?.startsWith("/dashboard/admin") && user?.role !== "admin") {
+            router.replace("/dashboard");
+        }
+    }, [isLoading, userAuth, user, pathname, router]);
 
     if (isLoading) {
         return <Loader />;
     }
 
-    return userAuth ? (
+    if (!userAuth) {
+        return null;
+    }
+
+    if (pathname?.startsWith("/dashboard/admin") && user?.role !== "admin") {
+        return null;
+    }
+
+    return (
         <>
             {children}
             <SessionWatcher />
         </>
-    ) : null;
+    );
 }

@@ -1,3 +1,36 @@
+export interface PayrollConflictInvoiceSummary {
+    id?: number;
+    uuid: string;
+    issuer_rfc: string;
+    issuer_name: string;
+    date: string | null;
+    fecha_timbrado: string | null;
+    fecha_inicial_pago: string | null;
+    fecha_final_pago: string | null;
+    tipo_nomina: string;
+    total_amount: number;
+    taxable_amount: number;
+    isr_retenido: number;
+    is_newer?: boolean;
+}
+
+export interface PayrollConflictDetail {
+    code: 'PAYROLL_PERIOD_CONFLICT';
+    message: string;
+    existing_invoice: PayrollConflictInvoiceSummary & { id: number };
+    new_invoice: PayrollConflictInvoiceSummary;
+}
+
+export class PayrollConflictError extends Error {
+    conflict: PayrollConflictDetail;
+
+    constructor(conflict: PayrollConflictDetail) {
+        super(conflict.message || 'Conflicto de periodo de nómina');
+        this.name = 'PayrollConflictError';
+        this.conflict = conflict;
+    }
+}
+
 export const uploadInvoiceApi = async (url: string, formData: FormData) => {
     const res = await fetch(`${url}/api/invoices/upload`, {
         method: 'POST',
@@ -6,7 +39,13 @@ export const uploadInvoiceApi = async (url: string, formData: FormData) => {
     });
     if (!res.ok) {
         const errorData = await res.json().catch(() => null);
-        throw new Error(errorData?.detail || 'Fallo al subir');
+        if (res.status === 409 && errorData?.detail?.code === 'PAYROLL_PERIOD_CONFLICT') {
+            throw new PayrollConflictError(errorData.detail as PayrollConflictDetail);
+        }
+        const detailMsg = typeof errorData?.detail === 'string'
+            ? errorData.detail
+            : errorData?.detail?.message || 'Fallo al subir';
+        throw new Error(detailMsg);
     }
     return res.json();
 };

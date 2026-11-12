@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X, Home, Folder, LogOut, LogIn, Sun, Moon, Info } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,11 +10,17 @@ import { Button } from "@/components/ui/button";
 
 export default function Navbar() {
     const [menuOpen, setMenuOpen] = useState(false);
-    const { userAuth, logout } = useAuthStore();
+    const { userAuth, userValid, logout } = useAuthStore();
     const { profile } = useDeductionsStore();
     const pathname = usePathname();
 
     const [darkMode, setDarkMode] = useState(false)
+
+    useEffect(() => {
+        if (!pathname?.startsWith("/dashboard") && !pathname?.startsWith("/auth")) {
+            userValid();
+        }
+    }, [pathname, userValid]);
 
     const toggleDarkMode = () => {
         setDarkMode(!darkMode)
@@ -68,7 +74,7 @@ export default function Navbar() {
                                 </Link>
                             </li>
                             <li>
-                                <Link href="/profile" className="flex items-center gap-2 hover:text-blue-600">
+                                <Link href="/dashboard/settings" className="flex items-center gap-2 hover:text-blue-600">
                                     <Menu size={20} /> Configuración
                                 </Link>
                             </li>
@@ -124,7 +130,7 @@ export default function Navbar() {
                                     </Link>
                                 </li>
                                 <li>
-                                    <Link href="/profile" className="flex items-center gap-2 text-slate-700 hover:text-blue-600" onClick={() => setMenuOpen(false)}>
+                                    <Link href="/dashboard/settings" className="flex items-center gap-2 text-slate-700 hover:text-blue-600" onClick={() => setMenuOpen(false)}>
                                         <Menu size={20} /> Configuración
                                     </Link>
                                 </li>

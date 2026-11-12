@@ -29,6 +29,11 @@ export interface Invoice {
     created_at: string;
     student_curp?: string | null;
     educational_level?: string | null;
+    isr_retenido?: number;
+    fecha_inicial_pago?: string | null;
+    fecha_final_pago?: string | null;
+    tipo_nomina?: string | null;
+    fecha_timbrado?: string | null;
 }
 
 export interface InvoiceUpdateData {

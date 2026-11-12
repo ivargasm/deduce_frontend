@@ -104,12 +104,13 @@ export default function AdminPanel() {
     }, [url, selectedYear]);
 
     useEffect(() => {
+        if (!user || user.role !== "admin") return;
         if (selectedYear !== "") {
             fetchAdminTaxBracketsApi(url, Number(selectedYear))
                 .then(setTaxBrackets)
                 .catch(() => toast.error("Error al obtener rangos ISR"));
         }
-    }, [selectedYear, url]);
+    }, [selectedYear, url, user]);
 
     useEffect(() => {
         if (!user) return;

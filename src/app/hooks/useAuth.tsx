@@ -1,24 +1,12 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '../store/Store';
-import { fetchUser } from '../lib/api/auth'; // Función para obtener el usuario
 
 export const useAuth = () => {
-    const { user, setUser, logout, url } = useAuthStore();
+    const { user, userAuth, isLoading, userValid, logout } = useAuthStore();
 
     useEffect(() => {
-        const checkUser = async () => {
-            try {
-                const userData = await fetchUser(url);
-                if (userData) {
-                    setUser(userData);
-                }
-            } catch {
-                logout();
-            }
-        };
+        userValid();
+    }, [userValid]);
 
-        checkUser();
-    }, [setUser, logout, url]);
-
-    return { user, logout };
+    return { user, userAuth, isLoading, logout };
 };

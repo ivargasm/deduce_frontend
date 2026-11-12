@@ -69,7 +69,18 @@ export async function reset_password(url: string, new_password: string, token: s
         body: JSON.stringify({ token, new_password }),
     });
 
-    if (!res.ok) throw new Error('Error al resetear la contraseña');
+    if (res.status === 429) {
+        throw new Error('Demasiados intentos. Por favor, espera un minuto e inténtalo de nuevo.');
+    }
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        const detail = typeof errorData?.detail === "string"
+            ? errorData.detail
+            : Array.isArray(errorData?.detail) && errorData.detail[0]?.msg
+                ? errorData.detail[0].msg
+                : 'Error al resetear la contraseña';
+        throw new Error(detail);
+    }
     return res;
 }
 

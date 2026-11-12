@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "../../store/Store";
+import { getSafeRedirectPath } from "../../lib/utils";
 import Link from "next/link"
 import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,7 +24,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 function LoginContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const redirectUrl = searchParams.get('redirect');
+    const redirectUrl = getSafeRedirectPath(searchParams.get('redirect'));
     const { loginUser, userValid, userAuth, user } = useAuthStore();
 
     const [globalError, setGlobalError] = useState("");

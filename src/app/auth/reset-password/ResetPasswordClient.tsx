@@ -45,6 +45,18 @@ export default function ResetPasswordClient() {
             setError("Las contraseñas no coinciden.");
             return;
         }
+        if (password.length < 8) {
+            setError("La contraseña debe tener al menos 8 caracteres.");
+            return;
+        }
+        if (new TextEncoder().encode(password).length > 72) {
+            setError("La contraseña es demasiado larga (máximo 72 bytes).");
+            return;
+        }
+        if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+            setError("La contraseña debe incluir mayúscula, minúscula, número y un carácter especial.");
+            return;
+        }
 
         setIsLoading(true);
 
