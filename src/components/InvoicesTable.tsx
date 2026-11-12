@@ -44,9 +44,13 @@ export default function InvoicesTable() {
         fetchIssuerRules,
         isLoading,
         deleteInvoice,
+        bulkDeleteInvoices,
         updateInvoice,
     } = useDeductionsStore();
     const [invoiceToDelete, setInvoiceToDelete] = useState<number | null>(null);
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
     const [editCfdiUse, setEditCfdiUse] = useState('');
     const [editCurp, setEditCurp] = useState('');
@@ -100,6 +104,62 @@ export default function InvoicesTable() {
     const warningInvoicesCount = useMemo(() => {
         return invoices.filter(inv => inv.status === 'warning' || inv.status === 'invalid').length;
     }, [invoices]);
+
+    // Facturas con inconsistencia cuyo UsoCFDI no es D01..D10 (ej. S01, G01, G03 de gastos generales/inversiones)
+    const nonDeductibleWarningIds = useMemo(() => {
+        return invoices
+            .filter(
+                inv =>
+                    (!inv.invoice_type || inv.invoice_type === 'DEDUCTION') &&
+                    (inv.status === 'warning' || inv.status === 'invalid') &&
+                    !(inv.cfdi_use || '').toUpperCase().startsWith('D')
+            )
+            .map(inv => inv.id);
+    }, [invoices]);
+
+    useEffect(() => {
+        const validSet = new Set(invoices.map(i => i.id));
+        setSelectedIds(prev => prev.filter(id => validSet.has(id)));
+    }, [invoices]);
+
+    const visibleIds = useMemo(() => filteredInvoices.map(inv => inv.id), [filteredInvoices]);
+    const allVisibleSelected = useMemo(
+        () => visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id)),
+        [visibleIds, selectedIds]
+    );
+
+    const toggleSelectAllVisible = (checked: boolean) => {
+        if (checked) {
+            setSelectedIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+        } else {
+            const visibleSet = new Set(visibleIds);
+            setSelectedIds(prev => prev.filter(id => !visibleSet.has(id)));
+        }
+    };
+
+    const toggleSelectOne = (id: number, checked: boolean) => {
+        if (checked) {
+            setSelectedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+        } else {
+            setSelectedIds(prev => prev.filter(item => item !== id));
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.length === 0) return;
+        setIsBulkDeleting(true);
+        try {
+            const deletedCount = await bulkDeleteInvoices(selectedIds);
+            toast.success(`Se eliminaron ${deletedCount} facturas correctamente.`);
+            setSelectedIds([]);
+            setConfirmBulkDeleteOpen(false);
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : "Error al eliminar las facturas seleccionadas";
+            toast.error(msg);
+        } finally {
+            setIsBulkDeleting(false);
+        }
+    };
 
     const savedStudents = useMemo(() => {
         const seen = new Map<string, { curp: string; level: string }>();
@@ -292,21 +352,75 @@ export default function InvoicesTable() {
         });
     };
 
+    const formatShortYmd = (ymd?: string | null) => {
+        if (!ymd) return null;
+        const parts = ymd.slice(0, 10).split('-').map(Number);
+        if (parts.length !== 3 || parts.some(isNaN)) return ymd;
+        const d = new Date(parts[0], parts[1] - 1, parts[2]);
+        return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+    };
+
     return (
         <div className="space-y-4">
             {warningInvoicesCount > 0 && (
-                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start gap-4">
-                    <div className="p-2 bg-orange-100 rounded-lg shrink-0">
-                        <AlertTriangle className="w-5 h-5 text-orange-600" />
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                        <div className="p-2 bg-orange-100 rounded-lg shrink-0">
+                            <AlertTriangle className="w-5 h-5 text-orange-600" />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-orange-900 mb-1">
+                                Atención requerida
+                            </h3>
+                            <p className="text-sm text-orange-700">
+                                Tienes {warningInvoicesCount} {warningInvoicesCount === 1 ? 'factura' : 'facturas'} con inconsistencias. Búscalas en la tabla usando el filtro &quot;⚠️ Con inconsistencias&quot; para ver qué corregir o eliminar en lote las que no sean deducciones personales.
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-sm font-bold text-orange-900 mb-1">
-                            Atención requerida
-                        </h3>
-                        <p className="text-sm text-orange-700">
-                            Tienes {warningInvoicesCount} {warningInvoicesCount === 1 ? 'factura' : 'facturas'} con inconsistencias. Búscalas en la tabla usando el filtro &quot;⚠️ Con inconsistencias&quot; para ver qué corregir.
-                        </p>
+                    {nonDeductibleWarningIds.length > 0 && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 border-orange-300 bg-white text-orange-900 hover:bg-orange-100"
+                            onClick={() => {
+                                setCategoryFilter('⚠️ Con inconsistencias');
+                                setSelectedIds(nonDeductibleWarningIds);
+                                toast.info(
+                                    `Se seleccionaron ${nonDeductibleWarningIds.length} facturas con Uso CFDI distinto de D01–D10 (ej. G03/S01).`
+                                );
+                            }}
+                        >
+                            Seleccionar no deducibles ({nonDeductibleWarningIds.length})
+                        </Button>
+                    )}
+                </div>
+            )}
+
+            {selectedIds.length > 0 && (
+                <div className="p-3 bg-slate-900 text-white rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-3 text-sm">
+                        <span className="font-semibold">
+                            {selectedIds.length} {selectedIds.length === 1 ? 'factura seleccionada' : 'facturas seleccionadas'}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setSelectedIds([])}
+                            className="text-xs text-slate-300 hover:text-white underline"
+                        >
+                            Desmarcar todas
+                        </button>
                     </div>
+                    <Button
+                        type="button"
+                        size="sm"
+                        disabled={isBulkDeleting}
+                        onClick={() => setConfirmBulkDeleteOpen(true)}
+                        className="bg-[var(--color-deduce-coral)] text-white hover:bg-red-600 flex items-center gap-1.5"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        Eliminar seleccionadas ({selectedIds.length})
+                    </Button>
                 </div>
             )}
             <div className="flex flex-col sm:flex-row gap-4 mb-4">
@@ -339,6 +453,13 @@ export default function InvoicesTable() {
                     <Table>
                         <TableHeader className="bg-slate-50/80 sticky top-0 z-10 shadow-sm">
                             <TableRow className="border-b border-slate-200">
+                                <TableHead className="w-10 text-center h-12">
+                                    <Checkbox
+                                        checked={allVisibleSelected}
+                                        onCheckedChange={(checked) => toggleSelectAllVisible(Boolean(checked))}
+                                        aria-label="Seleccionar facturas visibles"
+                                    />
+                                </TableHead>
                                 <TableHead className="text-xs font-bold text-slate-500 tracking-widest uppercase h-12">Fecha</TableHead>
                                 <TableHead className="text-xs font-bold text-slate-500 tracking-widest uppercase h-12">Proveedor</TableHead>
                                 <TableHead className="text-xs font-bold text-slate-500 tracking-widest uppercase h-12">Monto</TableHead>
@@ -350,21 +471,83 @@ export default function InvoicesTable() {
                         <TableBody>
                             {filteredInvoices.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center text-slate-500">
+                                    <TableCell colSpan={7} className="h-24 text-center text-slate-500">
                                         No se encontraron facturas con esos filtros.
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredInvoices.map((inv: Invoice) => (
-                        <TableRow key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                            <TableCell className="font-medium text-slate-700">{formatDate(inv.date)}</TableCell>
-                            <TableCell>
-                                <span className="text-sm font-medium text-[var(--color-deduce-navy)]">{inv.issuer_name}</span>
+                                filteredInvoices.map((inv: Invoice) => {
+                                    const isNomina = inv.invoice_type === 'NOMINA';
+                                    const isSelected = selectedIds.includes(inv.id);
+                                    const pIni = formatShortYmd(inv.fecha_inicial_pago);
+                                    const pFin = formatShortYmd(inv.fecha_final_pago);
+                                    const taxableVal = inv.taxable_amount ?? inv.total_amount;
+
+                                    return (
+                        <TableRow
+                            key={inv.id}
+                            className={`border-b border-slate-100 hover:bg-slate-50/50 ${isSelected ? 'bg-teal-50/40' : ''}`}
+                        >
+                            <TableCell className="text-center">
+                                <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={(checked) => toggleSelectOne(inv.id, Boolean(checked))}
+                                    aria-label={`Seleccionar factura ${inv.issuer_name}`}
+                                />
                             </TableCell>
-                            <TableCell className="text-slate-700 tabular-nums font-medium">{formatCurrency(inv.deductible_amount)}</TableCell>
+                            <TableCell className="font-medium text-slate-700">
+                                <div>{formatDate(inv.date)}</div>
+                                {isNomina && (pIni || pFin) && (
+                                    <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500 font-normal">
+                                        <span>Periodo: {pIni || '?'} – {pFin || '?'}</span>
+                                        <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
+                                            {inv.tipo_nomina === 'E' ? 'Ext.' : 'Ord.'}
+                                        </span>
+                                    </div>
+                                )}
+                            </TableCell>
+                            <TableCell>
+                                <div className="text-sm font-medium text-[var(--color-deduce-navy)]">{inv.issuer_name}</div>
+                                {!isNomina && inv.cfdi_use && (
+                                    <div className="text-[11px] text-slate-400">
+                                        Uso CFDI: <span className="font-mono font-medium text-slate-500">{inv.cfdi_use}</span>
+                                    </div>
+                                )}
+                            </TableCell>
+                            <TableCell className="text-slate-700 tabular-nums font-medium">
+                                {isNomina ? (
+                                    <div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-slate-800 font-semibold">
+                                                {formatCurrency(inv.total_amount)}
+                                            </span>
+                                            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                Bruto
+                                            </span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                                            Gravado: {formatCurrency(taxableVal)} · ISR ret.: {formatCurrency(inv.isr_retenido || 0)}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div>{formatCurrency(inv.deductible_amount)}</div>
+                                        {inv.deductible_amount === 0 && inv.total_amount > 0 && (
+                                            <div className="text-[11px] text-slate-400 font-normal">
+                                                Total CFDI: {formatCurrency(inv.total_amount)}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </TableCell>
                             <TableCell className="text-slate-600 text-sm">{inv.expense_type}</TableCell>
                             <TableCell>
                                 <StatusBadge status={inv.status} messages={inv.warning_messages} />
+                                {isNomina && inv.fecha_timbrado && (
+                                    <div className="text-[11px] text-slate-400 mt-1">
+                                        Timbrado: {formatDate(inv.fecha_timbrado)}
+                                    </div>
+                                )}
                             </TableCell>
                             <TableCell>
                                 <div className="flex justify-center items-center gap-2">
@@ -387,12 +570,39 @@ export default function InvoicesTable() {
                                 </div>
                             </TableCell>
                         </TableRow>
-                    ))
-                )}
-            </TableBody>
+                                    );
+                                })
+                            )}
+                        </TableBody>
                     </Table>
                 </div>
             </div>
+
+            <AlertDialog open={confirmBulkDeleteOpen} onOpenChange={setConfirmBulkDeleteOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            ¿Eliminar {selectedIds.length} {selectedIds.length === 1 ? 'factura seleccionada' : 'facturas seleccionadas'}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Las {selectedIds.length} facturas seleccionadas serán eliminadas permanentemente de tu historial y se recalculará tu resumen anual.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isBulkDeleting}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            disabled={isBulkDeleting}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                handleBulkDelete();
+                            }}
+                            className="bg-[var(--color-deduce-coral)] text-white hover:bg-red-600"
+                        >
+                            {isBulkDeleting ? 'Eliminando...' : `Sí, eliminar (${selectedIds.length})`}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog open={invoiceToDelete !== null} onOpenChange={(open) => !open && setInvoiceToDelete(null)}>
                 <AlertDialogContent>

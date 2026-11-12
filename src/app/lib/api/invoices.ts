@@ -87,6 +87,22 @@ export const deleteInvoiceApi = async (url: string, invoiceId: number) => {
     return res.json();
 };
 
+export const bulkDeleteInvoicesApi = async (url: string, invoiceIds: number[]): Promise<{ deleted_count: number; detail: string }> => {
+    const res = await fetch(`${url}/api/invoices/bulk-delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ invoice_ids: invoiceIds }),
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'Error al eliminar facturas en grupo');
+    }
+    return res.json();
+};
+
 export const updateInvoiceApi = async (
     url: string, 
     invoiceId: number, 

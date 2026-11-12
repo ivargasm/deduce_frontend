@@ -5,6 +5,7 @@ import {
     fetchInvoicesApi,
     fetchSummaryApi,
     deleteInvoiceApi,
+    bulkDeleteInvoicesApi,
     updateInvoiceApi,
     fetchIssuerRulesApi,
     updateIssuerRuleApi,
@@ -125,6 +126,7 @@ interface DeductionsState {
     updateIssuerRule: (id: number, data: { student_curp?: string; educational_level?: string; match_keyword?: string; auto_apply?: boolean }) => Promise<void>;
     deleteIssuerRule: (id: number) => Promise<void>;
     deleteInvoice: (id: number) => Promise<void>;
+    bulkDeleteInvoices: (ids: number[]) => Promise<number>;
     updateInvoice: (id: number, data: InvoiceUpdateData) => Promise<InvoiceUpdateResult>;
 }
 
@@ -196,6 +198,19 @@ export const useDeductionsStore = create<DeductionsState>((set, get) => ({
             await deleteInvoiceApi(url, id);
             await get().fetchInvoices();
             await get().fetchSummary();
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
+    },
+
+    bulkDeleteInvoices: async (ids: number[]) => {
+        const url = useAuthStore.getState().url;
+        try {
+            const res = await bulkDeleteInvoicesApi(url, ids);
+            await get().fetchInvoices();
+            await get().fetchSummary();
+            return res.deleted_count;
         } catch (error) {
             console.error(error);
             throw error;
